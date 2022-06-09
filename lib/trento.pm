@@ -41,6 +41,35 @@ use constant TRENTO_AZ_PREFIX => 'openqa-trento';
 # Parameter 'registry_name' must conform to the following pattern: '^[a-zA-Z0-9]*$'.
 use constant TRENTO_AZ_ACR_PREFIX => 'openqatrentoacr';
 
+sub my_script_retry {
+    my ($cmd, %args) = @_;
+    my $ecode = $args{expect} // 0;
+    my $retry = $args{retry} // 10;
+    my $delay = $args{delay} // 30;
+    my $timeout = $args{timeout} // 30;
+    my $die = $args{die} // 1;
+
+    my $ret;
+
+    my $exec = "timeout -s 9 $timeout $cmd";
+    # Exclamation mark needs to be moved before the timeout command, if present
+    if (substr($cmd, 0, 1) eq "!") {
+        $cmd = substr($cmd, 1);
+        $cmd =~ s/^\s+//;    # left trim spaces after the exclamation mark
+        $exec = "! timeout $timeout $cmd";
+    }
+    for (1 .. $retry) {
+        # timeout for script_run must be larger than for the 'timeout ...' command
+        $ret = script_run($exec, ($timeout + 3));
+        last if defined($ret) && $ret == $ecode;
+
+        die("Waiting for Godot: $cmd") if $retry == $_ && $die == 1;
+        sleep $delay if ($delay > 0);
+    }
+
+    return $ret;
+}
+
 
 =head2 get_resource_group
 Return a string to be used as cloud resource group.
@@ -93,10 +122,12 @@ Delere resource group and so all its content
 
 =cut
 sub az_delete_group {
+    script_run('echo "Delete all resources"');
     my $az_cmd = 'az group delete ' .
       '--resource-group ' . get_resource_group() .
       ' --yes';
-    script_retry($az_cmd, timeout => 600, retry => 5, delay => 60);
+    my_script_retry($az_cmd, timeout => 600, retry => 5, delay => 60);
+    script_run('echo "Just to be sure..."');
     assert_script_run($az_cmd, 1200);
 }
 
