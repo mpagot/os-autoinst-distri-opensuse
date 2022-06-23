@@ -45,7 +45,9 @@ sub parse_schedule {
 
     # schedule contains keys and is based on a list of files representing schedule flows
     if (ref $schedule->{schedule} eq 'HASH') {
+        diag('--> HASH');
         my $default_path = get_var('YAML_SCHEDULE_DEFAULT');
+        diag('default_path:' . $default_path);
         die "openQA setting 'YAML_SCHEDULE_DEFAULT' should be provided when using keys to be overriden " .
           "instead of a list of test modules." unless $default_path;
         my $default_flow = $ypp->load_file($root_project_dir . $default_path);
@@ -77,7 +79,10 @@ sub parse_schedule {
     }
     # schedule contains a list of test modules
     else {
+        diag('--> NO HASH:' . $schedule->{schedule});
+        diag('--> ' . join(',', @{$schedule->{schedule}}));
         for my $module (@{$schedule->{schedule}}) {
+            diag('module:' . $module);
             push(@scheduled, parse_schedule_module($schedule, $module));
         }
     }
@@ -145,6 +150,7 @@ sub parse_test_suite_data {
     my ($schedule) = shift;
     $test_suite_data = {};
     if (exists $schedule->{test_data}) {
+        diag('--> test_data');
         $test_suite_data = {%$test_suite_data, %{$schedule->{test_data}}};
     }
     # import test data directly from data file
@@ -167,6 +173,7 @@ Parse variables and test modules from a yaml file representing a test suite to b
 sub load_yaml_schedule {
     if (my $yamlfile = get_var('YAML_SCHEDULE')) {
         my $schedule_file = $ypp->load_file($root_project_dir . $yamlfile);
+        diag('schedule_file:'.$schedule_file);
         my %schedule_vars = parse_vars($schedule_file);
         my $test_context_instance = undef;
         while (my ($var, $value) = each %schedule_vars) { set_var($var, $value) }

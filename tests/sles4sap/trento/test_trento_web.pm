@@ -4,9 +4,10 @@
 # Summary: Trento test
 # Maintainer: QE-SAP <qe-sap@suse.de>, Michele Pagot <michele.pagot@suse.com>
 
+use strict;
+use warnings;
 use Mojo::Base 'publiccloud::basetest';
 use base 'consoletest';
-use strict;
 use testapi;
 use base 'trento';
 
@@ -31,25 +32,21 @@ sub run {
 
     assert_script_run "mkdir " . $self->CYPRESS_LOG_DIR;
 
-    #####################
     #  Cypress verify: cypress.io self check about the framework installation
     $self->cypress_exec($cypress_test_dir, 'verify', 120, 'verify', 1);
     $self->cypress_log_upload(('.txt'));
 
-    #####################
     # test about first visit: login and eula
-    $self->cypress_test_exec($cypress_test_dir, 'first_visit', 900, 0);
+    $self->cypress_test_exec($cypress_test_dir, 'first_visit', 900);
 
-    #####################
     # all other cypress tests
-    $self->cypress_test_exec($cypress_test_dir, 'all', 900, 0);
+    $self->cypress_test_exec($cypress_test_dir, 'all', 900);
 }
 
 sub post_fail_hook {
     my ($self) = @_;
-    # script_run('az group list --query "[].name" -o tsv', 120);
     $self->az_delete_group;
-    # sleep 60;
+
     $self->cypress_log_upload(('.txt', '.mp4'));
     parse_extra_log("XUnit", $_) for split(/\n/, script_output('find ' . $self->CYPRESS_LOG_DIR . ' -type f -iname "*.xml"'));
 

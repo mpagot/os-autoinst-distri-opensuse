@@ -4,9 +4,10 @@
 # Summary: Trento test
 # Maintainer: QE-SAP <qe-sap@suse.de>, Michele Pagot <michele.pagot@suse.com>
 
+use strict;
+use warnings;
 use Mojo::Base 'publiccloud::basetest';
 use base 'consoletest';
-use strict;
 use testapi;
 use utils qw(script_retry);
 use base 'trento';
@@ -34,7 +35,7 @@ sub run {
     }
 
     # test if the web page is reachable on http
-    my $trento_url = 'http://' . $machine_ip . '/';
+    my $trento_url = "http://$machine_ip/";
     script_run('curl --version');
     assert_script_run('curl -k  ' . $trento_url);
     # HEAD request
@@ -47,11 +48,15 @@ sub run {
 
     # only available from curl 7.76.0 (and for the moment we have 7.66)
     #assert_script_run('curl -k  ' . $trento_url . ' --fail-with-body');
+    my $curl_cmd_test  = 'test $('.
+        'curl -I -L --silent --output /dev/null --write-out "%{http_code}" ' . $trento_url.
+        ') -eq 200 ';
+    script_retry($curl_cmd_test, retry => 5, delay => 60);
 }
 
 sub post_fail_hook {
     my ($self) = @_;
-    $self->k8s_logs(('web', 'runner'));
+    $self->k8s_logs(qw(web runner));
 
     $self->az_delete_group;
     $self->SUPER::post_fail_hook;
