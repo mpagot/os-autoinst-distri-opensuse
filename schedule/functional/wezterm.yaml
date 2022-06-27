@@ -1,0 +1,10 @@
+---
+name: wezterm
+description: >
+    Maintainer: michele.pagot@suse.com
+    Install and test wezterm packages after ????,
+    Boot from HDD directly to run wezterm on Tumbleweed.
+schedule:
+    - boot/boot_to_desktop
+    - x11/wezterm
+    - shutdown/shutdown
