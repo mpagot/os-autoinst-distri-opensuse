@@ -13,9 +13,15 @@ use warnings;
 use testapi;
 use utils;
 
+sub switch_to_desktop {
+    # switch to desktop
+    if (!check_var('DESKTOP', 'textmode')) {
+        select_console('x11', await_console => 0);
+    }
+}
 
 # Install wezterm and set initial configuration
-sub wezterm_setup() {
+sub setup() {
     # log in to root console
     select_console('root-console');
 
@@ -23,6 +29,21 @@ sub wezterm_setup() {
 
     zypper_call('in wezterm');
     assert_script_run('rpm -q wezterm');
+}
+
+# start Wezterm
+sub start() {
+    switch_to_desktop();
+    x11_start_program('wezterm');
+    wait_still_screen 5;
+}
+
+# type something within Wezterm
+sub type_string() {
+    my ($self, $str) = @_;
+    type_string $str;
+    send_key 'ret';
+    wait_still_screen 5;
 }
 
 

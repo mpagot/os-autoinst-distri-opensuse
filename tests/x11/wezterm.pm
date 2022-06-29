@@ -14,30 +14,20 @@ use warnings;
 use testapi;
 use Wezterm::Utils;
 use utils;
-use version_utils 'is_sle';
 use x11utils qw(turn_off_screensaver);
 
 sub run() {
-
     my ($self) = shift;
     # install and configure wezterm in console
-    Wezterm::Utils->wezterm_setup();
+    Wezterm::Utils->setup();
 
-    # switch to desktop
-    $self->switch_to_desktop();
-
-    # start wezterm
+    Wezterm::Utils->switch_to_desktop();
     $self->turn_off_screensaver();
 
-    # switch to desktop
-    $self->switch_to_desktop();
-}
+    $self->test_terminal('wezterm');
 
-sub switch_to_desktop {
-    # switch to desktop
-    if (!check_var('DESKTOP', 'textmode')) {
-        select_console('x11', await_console => 0);
-    }
+    Wezterm::Utils->start();
+    Wezterm::Utils->type_string('echo "Hello World"');
 }
 
 1;
