@@ -6,5 +6,7 @@ description: >
     Boot from HDD directly to run wezterm on Tumbleweed.
 schedule:
     - boot/boot_to_desktop
-    - x11/wezterm
+    - x11/wezterm/install
+    - x11/wezterm/type_text
+    - x11/wezterm/tabs
     - shutdown/shutdown

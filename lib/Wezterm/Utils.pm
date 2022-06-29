@@ -38,8 +38,18 @@ sub start() {
     wait_still_screen 5;
 }
 
+# quit Wezterm
+sub quit() {
+    send_key 'alt-f4';
+}
+
+# Open a new tab
+sub new_tab() {
+    send_key 'super-t';
+}
+
 # type something within Wezterm
-sub type_string() {
+sub send_string() {
     my ($self, $str) = @_;
     type_string $str;
     send_key 'ret';

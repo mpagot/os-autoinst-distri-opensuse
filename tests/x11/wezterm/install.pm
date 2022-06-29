@@ -23,11 +23,6 @@ sub run() {
 
     Wezterm::Utils->switch_to_desktop();
     $self->turn_off_screensaver();
-
-    $self->test_terminal('wezterm');
-
-    Wezterm::Utils->start();
-    Wezterm::Utils->type_string('echo "Hello World"');
 }
 
 1;
