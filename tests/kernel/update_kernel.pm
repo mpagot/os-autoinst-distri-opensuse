@@ -1,12 +1,11 @@
 # SUSE's openQA tests
 #
-# Copyright 2017-2021 SUSE LLC
+# Copyright 2017-2022 SUSE LLC
 # SPDX-License-Identifier: FSFAP
 #
-# Package: kernel-azure kernel-devel dracut kmod-compat qa_lib_ctcs2 qa_test_ltp
-# qa_test_newburn kernel-default
+# Package: kernel-azure kernel-devel dracut kmod-compat kernel-default
 # Summary: This module installs maint update under test for kernel/kgraft to ltp work image
-# Maintainer: Ondřej Súkup osukup@suse.cz
+# Maintainer: QE Kernel <kernel-qa@suse.de>
 
 use 5.018;
 use warnings;
@@ -204,6 +203,7 @@ sub install_lock_kernel {
             '4.4.114-94.11.3' => '4.4.114-94.11.2',
             '4.4.126-94.22.1' => '4.4.126-94.22.2',
             '4.4.178-94.91.2' => '4.4.178-94.91.1',
+            '4.4.180-94.164.3' => '4.4.180-94.164.2',
             '4.12.14-150.14.2' => '4.12.14-150.14.1',
             '5.3.18-24.67.3' => '5.3.18-24.67.2',
             '5.3.18-24.75.3' => '5.3.18-24.75.2',
@@ -214,6 +214,7 @@ sub install_lock_kernel {
             '4.4.114-94.11.3' => '4.4.114-94.11.2',
             '4.4.126-94.22.1' => '4.4.126-94.22.2',
             '4.4.178-94.91.2' => '4.4.178-94.91.1',
+            '4.4.180-94.164.3' => '4.4.180-94.164.2',
             '4.12.14-150.14.2' => '4.12.14-150.14.1',
             '5.3.18-24.67.3' => '5.3.18-24.67.2',
             '5.3.18-24.75.3' => '5.3.18-24.75.2',
@@ -224,6 +225,7 @@ sub install_lock_kernel {
             '4.4.114-94.11.3' => '4.4.114-94.11.2',
             '4.4.126-94.22.1' => '4.4.126-94.22.2',
             '4.4.178-94.91.2' => '4.4.178-94.91.1',
+            '4.4.180-94.164.3' => '4.4.180-94.164.2',
             '4.12.14-150.14.2' => '4.12.14-150.14.1',
             '5.3.18-24.67.3' => '5.3.18-24.67.2',
             '5.3.18-24.75.3' => '5.3.18-24.75.2',
@@ -357,8 +359,7 @@ sub update_kgraft {
 
         #kill HEAVY-LOAD scripts
         script_run("screen -S LTP_syscalls -X quit");
-        script_run("screen -S newburn_KCOMPILE -X quit");
-        script_run("rm -Rf /var/log/qa");
+        script_run("screen -S LTP_aiodio_part4 -X quit");
 
         script_run(qq{rpm -qa --qf "%{NAME}-%{VERSION}-%{RELEASE} (%{INSTALLTIME:date})\\n" | sort -t '-' > /tmp/rpmlist.after});
         upload_logs('/tmp/rpmlist.after');
@@ -428,13 +429,13 @@ sub run {
         if (!check_var('REMOVE_KGRAFT', '1')) {
             # dependencies for heavy load script
             add_qa_head_repo;
-            zypper_call("in qa_lib_ctcs2 qa_test_ltp qa_test_newburn");
+            zypper_call("in ltp-stable");
 
             # update kgraft patch under heavy load
             update_kgraft($incident_klp_pkg, $repo, $incident_id);
 
             zypper_call("rr qa-head");
-            zypper_call("rm qa_lib_ctcs2 qa_test_ltp qa_test_newburn");
+            zypper_call("rm ltp-stable");
 
             verify_klp_pkg_patch_is_active($incident_klp_pkg);
         }
