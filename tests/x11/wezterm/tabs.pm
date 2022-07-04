@@ -5,7 +5,7 @@
 
 # Package: Wezterm
 # Summary: Wezterm regression test
-# * install and configure wezterm
+# * open new tab
 # Maintainer: QE Core <qe-core@suse.de>
 
 use base "x11test";
@@ -13,18 +13,17 @@ use strict;
 use warnings;
 use testapi;
 use Wezterm::Utils;
-use utils;
-use x11utils qw(turn_off_screensaver);
 
 sub run() {
     my ($self) = shift;
 
-    Wezterm::Utils->switch_to_desktop();
-    Wezterm::Utils->start();
-    Wezterm::Utils->new_tab();
+    # Test with the default key binding
+    Wezterm::Utils->test_new_tab();
     wait_still_screen 5;
-    assert_screen([qw(wezterm two-tabs)], 10);
-    Wezterm::Utils->quit();
+
+    # Test new tab with some custom key binding
+    Wezterm::Utils->test_new_tab_key_binding(key => 'w');
+    Wezterm::Utils->test_new_tab_key_binding(key => 'n');
 }
 
 1;

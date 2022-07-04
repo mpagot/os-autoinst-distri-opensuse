@@ -24,6 +24,12 @@ sub run() {
 
     Wezterm::Utils->start();
     Wezterm::Utils->send_string('echo "Hello World"');
+    assert_screen('hello-world', 10);
+    Wezterm::Utils->send_string('echo "USER:$USER"');
+    Wezterm::Utils->send_string('echo "HOME:$HOME"');
+    Wezterm::Utils->send_string('wezterm -V');
+    Wezterm::Utils->send_string('which wezterm');
+
     Wezterm::Utils->quit();
 }
 
