@@ -12,6 +12,19 @@ use testapi;
 
 use constant GIT_CLONE_LOG => '/tmp/git_clone.log';
 
+use constant QESAPDEPLOY_PREFIX => 'qe-sap-deployment';
+
+=head3 get_resource_group
+
+Return a string to be used as cloud resource group.
+It contains the JobId
+=cut
+sub get_resource_group {
+    my $job_id = get_current_job_id();
+    return QESAPDEPLOY_PREFIX . "-rg-$job_id";
+}
+
+
 sub run {
     my ($self) = @_;
     $self->select_serial_terminal;
@@ -21,7 +34,7 @@ sub run {
     # If 'az' is preinstalled, we test that version
     assert_script_run('az --version');
 
-    # Get the code for the qe-sap-deployment 
+    # Get the code for the qe-sap-deployment
     my $git_repo = get_var(QESAPDEPLOY_GITHUB_REPO => 'github.com/SUSE/qe-sap-deployment');
     my $git_branch = get_var('QESAPDEPLOY_GITHUB_BRANCH', 'main');
     #my $git_token = get_var(QESAPDEPLOY_GITHUB_TOKEN => get_required_var('_SECRET_QESAPDEPLOY_GITHUB_TOKEN'));
@@ -32,17 +45,20 @@ sub run {
     assert_script_run("git clone $git_clone_cmd | tee " . GIT_CLONE_LOG);
     enter_cmd 'cd qe-sap-deployment';
     assert_script_run("git checkout " . $git_branch);
-    
+
     # prepare the python environment
     assert_script_run('python3 -m venv venv');
     assert_script_run('source venv/bin/activate');
-    assert_script_run('pip install -r ${HOME}/test/qe-sap-deployment/requirements.txt'); 
+    assert_script_run('pip install --no-color -r ${HOME}/test/qe-sap-deployment/requirements.txt', 180);
     enter_cmd 'cd ${HOME}/test/qe-sap-deployment/terraform/azure';
-    
+
     # test terraform, python and ansible
     assert_script_run('terraform init');
     assert_script_run('python3 ${HOME}/test/qe-sap-deployment/scripts/out2inventory.py --help');
     assert_script_run('ansible --version');
+
+    my $resource_group = $self->get_resource_group;
+
 }
 
 sub post_fail_hook {
