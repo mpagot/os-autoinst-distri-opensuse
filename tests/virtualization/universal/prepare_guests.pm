@@ -2,9 +2,14 @@
 #
 # Copyright 2019-2020 SUSE LLC
 # SPDX-License-Identifier: FSFAP
-
-# Package: libvirt-client iputils nmap xen-tools
+#
 # Summary: Installation of HVM and PV guests
+#
+# PATCH_WITH_ZYPPER: switching between zypper and autoyast install.
+# UPDATE_PACKAGE: check if the MU package is installed from testing repo.
+# PATCH_WITH_ZYPPER and UPDATE_PACKAGE are not defined in settings. They
+# should be specified on command line when scheduling tests.
+#
 # Maintainer: Pavel Dostál <pdostal@suse.cz>, Felix Niederwanger <felix.niederwanger@suse.de>
 
 use base 'consoletest';
@@ -26,7 +31,6 @@ sub create_profile {
     my %ltss_products = @{get_var_array("LTSS_REGCODES_SECRET")};
     my $ca_str = "SLE_" . $version =~ s/\./_SP/r;
     my $sut_ip = get_required_var("SUT_IP");
-    record_info("$ca_str");
     my $profile = get_test_data($path);
     $profile =~ s/\{\{GUEST\}\}/$vm_name/g;
     $profile =~ s/\{\{SCC_REGCODE\}\}/$scc_code/g;
@@ -43,7 +47,9 @@ sub create_profile {
     my $vars = {
         vm_name => $vm_name,
         ltss_code => $ltss_products{$version},
-        repos => [split(/,/, $incident_repos)]
+        repos => [split(/,/, $incident_repos)],
+        check_var => \&check_var,
+        get_var => \&get_required_var
     };
     my $output = Mojo::Template->new(vars => 1)->render($profile, $vars);
     save_tmp_file("$vm_name.xml", $output);
@@ -51,6 +57,24 @@ sub create_profile {
     make_path('ulogs');
     copy(hashed_string("$vm_name.xml"), "ulogs/$vm_name.xml");
     return autoinst_url . "/files/$vm_name.xml";
+}
+
+sub gen_osinfo {
+    my ($vm_name) = @_;
+    my $h_version = get_var("VERSION") =~ s/-SP/./r;
+    my $g_version = $vm_name =~ /sp/ ? $vm_name =~ s/\D*(\d+)sp(\d)\D*/$1.$2/r : $vm_name =~ s/\D*(\d+)\D*/$1/r;
+    my $info_op = $h_version > 15.2 ? "--osinfo" : "--os-variant";
+    my $info_val = $g_version > 12.5 ? $vm_name =~ s/HVM|PV//r =~ s/sles/sle/r : $vm_name =~ s/PV|HVM//r;
+    if ($h_version == 12.3) {
+        $info_val = "sle15-unknown" if ($g_version > 15.1);
+        $info_val = "sles12-unknown" if ($g_version == 12.5);
+    } elsif ($h_version == 12.4) {
+        $info_val = "sle15-unknown" if ($g_version > 15.2);
+    } elsif ($h_version == 15) {
+        $info_val = "sle15-unknown" if ($g_version > 15.1);
+    }
+    # Return osinfo parameters (--osinfo/--variant OSNAME) for virt-install depends on supported status on different host os versions.
+    return "$info_op $info_val";
 }
 
 sub run {
@@ -61,6 +85,7 @@ sub run {
     systemctl("restart libvirtd");
     assert_script_run('for i in $(virsh list --name|grep sles);do virsh destroy $i;done');
     assert_script_run('for i in $(virsh list --name --inactive); do virsh undefine $i --remove-all-storage;done');
+    script_run("[ -f /root/.ssh/known_hosts ] && > /root/.ssh/known_hosts");
     script_run 'rm -rf guests_ip';
 
 
@@ -89,6 +114,7 @@ sub run {
         if ($method eq "virt-install") {
             $guest->{autoyast} = create_profile($guest->{name}, "x86_64", $guest->{macaddress}, $guest->{ip});
             record_info("$guest->{autoyast}");
+            $guest->{osinfo} = gen_osinfo($guest->{name});
             create_guest($guest, $method);
         } elsif ($method eq "import") {
             # Download the diskimage. Note: this could be merged with download_image.pm at some point
@@ -100,10 +126,6 @@ sub run {
             die "Unsupported method '$method' for guest $guest";
         }
     }
-
-    script_run 'history -a';
-    assert_script_run('cat ~/virt-install*', 30);
-    script_run('xl dmesg |grep -i "fail\|error" |grep -vi Loglevel') if (is_xen_host());
 }
 
 sub post_fail_hook {
