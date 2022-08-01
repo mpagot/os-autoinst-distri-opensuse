@@ -31,7 +31,7 @@ sub run {
     $self->configure_tfvar('/root/test/qe-sap-deployment',
         get_required_var('PUBLIC_CLOUD_PROVIDER'),
         $provider->provider_client->region,
-        get_var('QESAPDEPLOY_OS_VER'));
+        get_required_var('QESAPDEPLOY_OS_VER'));
 
     # variables.sh file
     $self->configure_variables('/root/test/qe-sap-deployment',

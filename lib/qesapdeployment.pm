@@ -103,6 +103,7 @@ sub configure_tfvar {
         q(%OSVER%) => $os_version,
         q(%SSHKEY%) => "/root/.ssh/id_rsa.pub"
     );
+    upload_logs($tfvar);
 }
 
 =head3 configure_variables
@@ -130,6 +131,7 @@ sub configure_variables {
     enter_cmd "echo \"EMAIL='testing\@suse.com'\" >> $qesaprepo/variables.sh";
     enter_cmd "echo \"SAPCONF='true'\" >> $qesaprepo/variables.sh";
     enter_cmd "echo \"export REG_CODE EMAIL SAPCONF\" >> $qesaprepo/variables.sh";
+    upload_logs("$qesaprepo/variables.sh");
 }
 
 =head3 configure_hanamedia
