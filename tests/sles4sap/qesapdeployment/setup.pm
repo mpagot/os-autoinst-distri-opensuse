@@ -33,13 +33,9 @@ sub run {
     enter_cmd 'cd ~/test/qe-sap-deployment';
     assert_script_run("git checkout " . $git_branch);
 
-    # prepare the python environment
-    assert_script_run('python3 -m venv venv');
-    assert_script_run('source venv/bin/activate');
     enter_cmd 'pip config --site set global.progress_bar off';
-
-    # Hack to fix an installation conflict. Someone install PyYAML 6.0 and awscli needs an older one
     my $pip_ints_cmd = 'pip install --no-color --no-cache-dir ';
+    # Hack to fix an installation conflict. Someone install PyYAML 6.0 and awscli needs an older one
     assert_script_run($pip_ints_cmd . 'awscli==1.19.48 | tee ' . PIP_INSTALL_LOG, 180);
     assert_script_run($pip_ints_cmd . '-r ~/test/qe-sap-deployment/requirements.txt | tee -a ' . PIP_INSTALL_LOG, 180);
 
