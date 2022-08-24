@@ -9,6 +9,7 @@ vars:
 schedule:
   - installation/bootloader_start
   - installation/setup_libyui
+  - installation/access_beta_distribution
   - installation/product_selection/install_SLES
   - installation/licensing/accept_license
   - installation/disk_activation/select_configure_zfcp_disks
@@ -38,6 +39,7 @@ schedule:
   - installation/handle_reboot
   - installation/first_boot
   - console/validate_zfcp
+  - console/validate_zfcp_multipath
     #  Unscheduling due to poo#99267
     #  - console/validate_multipath
 test_data:

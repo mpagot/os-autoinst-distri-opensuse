@@ -60,9 +60,9 @@ sub configure_static_ip {
         my $nm_list = script_output("nmcli -t -f DEVICE,NAME c | grep '$device' | head -n1");
         ($device, $nm_id) = split(':', $nm_list);
 
-        record_info('set_ip', "Device: $device\n NM ID: $nm_id\nIP: $ip");
+        record_info('set_ip', "Device: $device\n NM ID: $nm_id\nIP: $ip\nMTU: $mtu");
 
-        assert_script_run "nmcli connection modify '$nm_id' ifname '$device' ip4 $ip ipv4.method manual ";
+        assert_script_run "nmcli connection modify '$nm_id' ifname '$device' ip4 $ip ipv4.method manual 802-3-ethernet.mtu $mtu";
     } else {
         # Get MAC address
         my $net_conf = parse_network_configuration();
@@ -231,6 +231,8 @@ sub restart_networking {
     if ($is_nm) {
         assert_script_run 'nmcli networking off';
         assert_script_run 'nmcli networking on';
+        # Wait until the connections are configured
+        assert_script_run 'nmcli networking connectivity check';
     } else {
         assert_script_run 'rcnetwork restart';
     }

@@ -86,14 +86,11 @@ sub run {
     assert_script_run('for i in $(virsh list --name|grep sles);do virsh destroy $i;done');
     assert_script_run('for i in $(virsh list --name --inactive); do virsh undefine $i --remove-all-storage;done');
     script_run("[ -f /root/.ssh/known_hosts ] && > /root/.ssh/known_hosts");
-    script_run 'rm -rf guests_ip';
+    script_run 'rm -rf /tmp/guests_ip';
 
 
     # Ensure additional package is installed
     zypper_call '-t in libvirt-client iputils nmap supportutils';
-
-    assert_script_run "mkdir -p /var/lib/libvirt/images/xen/";
-
     if (script_run("virsh net-list --all | grep default") != 0) {
         assert_script_run "curl " . data_url("virt_autotest/default_network.xml") . " -o ~/default_network.xml";
         assert_script_run "virsh net-define --file ~/default_network.xml";

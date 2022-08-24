@@ -93,6 +93,7 @@ K3S_SYMLINK | string | | Can be 'skip' or 'force'. Skips the installation of k3s
 K3S_BIN_DIR | string | | If defined, install k3s to this provided directory instead of `/usr/local/bin/`
 K3S_CHANNEL | string | | Set the release channel to pick the k3s version from. Options include "stable", "latest" and "testing"
 KUBECTL_CLUSTER | string | | Defines the cluster used to test `kubectl`. Currently only `k3s` is supported.
+KUBECTL_VERSION | string | v1.22.12 | Defines the kubectl version.
 KEEP_DISKS | boolean | false | Prevents disks wiping for remote backends without snaphots support, e.g. ipmi, powerVM, zVM
 KEEP_ONLINE_REPOS | boolean | false | openSUSE specific variable, not to replace original repos in the installed system with snapshot mirrors which are not yet published.
 KEEP_PERSISTENT_NET_RULES | boolean | false | Keep udev rules 70-persistent-net.rules, which are deleted on backends with image support (qemu, svirt) by default.
@@ -169,6 +170,9 @@ SPLITUSR | boolean | false | Enables `installation/partitioning_splitusr` test m
 SUSEMIRROR | string | | Mirror url of the installation medium.
 SYSAUTHTEST | boolean | false | Enable system authentication test (`sysauth/sssd`)
 SYSCTL_IPV6_DISABLED | boolean | undef | Set automatically in samba_adcli tests when ipv6 is disabled
+SYSTEMD_NSPAWN | boolean | 1 | Run systemd upstream tests in nspawn container rather than qemu
+SYSTEMD_TESTSUITE | boolean | undef | Enable schedule of systemd upstream tests
+SYSTEMD_UNIFIED_CGROUP | string | "yes", "no", "hybrid", "default" | systemd currently supports 3 (unified,legacy,hybrid) cgroups configurations
 TEST | string | | Name of the test suite.
 TEST_CONTEXT | string | | Defines the class name to be used as the context instance of the test. This is used in the scheduler to pass the `run_args` into the loadtest function. If it is not given it will be undef.
 TOGGLEHOME | boolean | false | Changes the state of partitioning to have or not to have separate home partition in the proposal.
@@ -228,10 +232,6 @@ The following variables are relevant for publiccloud related jobs. Keep in mind 
 
 Variable        | Type      | Default value | Details
 ---             | ---       | ---           | ---
-_SECRET_PUBLIC_CLOUD_REST_URL | string | "https://publiccloud.qa.suse.de/vault" | Vault server URL
-_SECRET_PUBLIC_CLOUD_REST_USER | string | "" | Vault server user name
-_SECRET_PUBLIC_CLOUD_REST_PW | string | "" | Vault server user password
-_SECRET_PUBLIC_CLOUD_REST_SSL_INSECURE | boolean | true | Do not validate Vault server certificate
 PUBLIC_CLOUD | boolean | false | All Public Cloud tests have this variable set to true. Contact: qa-c@suse.de
 PUBLIC_CLOUD_ACCOUNT | string | "" | For GCE will set account via `gcloud config set account ' . $self->account`.
 PUBLIC_CLOUD_ACCNET | boolean | false | If set, az_accelerated_net test module is added to the job.
@@ -289,9 +289,6 @@ PUBLIC_CLOUD_AZURE_SUBSCRIPTION_ID | string | "" | Used to create the service ac
 PUBLIC_CLOUD_CONTAINER_IMAGES_REGISTRY | string | "" | Name for public cloud registry for the container images used on kubernetes tests.
 PUBLIC_CLOUD_K8S_CLUSTER | string | "" | Name for the kubernetes cluster.
 PUBLIC_CLOUD_AZURE_K8S_RESOURCE_GROUP | string | "" | Name for the resource group which is subscribed the kubernetes cluster.
-PUBLIC_CLOUD_VAULT_NAMESPACE | string | "qac" | The Vault server namespace.
-PUBLIC_CLOUD_VAULT_TIMEOUT | integer | 60 | The number of seconds we wait for the Vault server to respond.
-PUBLIC_CLOUD_VAULT_TRIES | integer | 3 | The number of attempts to connect to Vault server.
 PUBLIC_CLOUD_CREDENTIALS_URL | string | "" | Base URL where to get the credentials from. This will be used to compose the full URL together with `PUBLIC_CLOUD_NAMESPACE`.
 PUBLIC_CLOUD_NAMESPACE | string | "" | The Public Cloud Namespace name that will be used to compose the full credentials URL together with `PUBLIC_CLOUD_CREDENTIALS_URL`.
 PUBLIC_CLOUD_USER | string | "" | The public cloud instance system user.

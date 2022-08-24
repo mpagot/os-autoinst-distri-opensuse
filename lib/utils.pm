@@ -11,7 +11,7 @@ use warnings;
 use testapi qw(is_serial_terminal :DEFAULT);
 use lockapi 'mutex_wait';
 use mm_network;
-use version_utils qw(is_microos is_leap is_public_cloud is_sle is_sle12_hdd_in_upgrade is_storage_ng is_jeos package_version_cmp);
+use version_utils qw(is_sle_micro is_microos is_leap is_public_cloud is_sle is_sle12_hdd_in_upgrade is_storage_ng is_jeos package_version_cmp);
 use Utils::Architectures;
 use Utils::Systemd qw(systemctl disable_and_stop_service);
 use Utils::Backends;
@@ -588,6 +588,31 @@ sub zypper_call {
         }
         last;
     }
+
+    # log all install and remove actions for later use by tests/console/zypper_log_packages.pm
+    my @packages = split(" ", $command);
+    for (my $i = 0; $i < scalar(@packages); $i++) {
+        if ($packages[$i] eq "--root" || $packages[$i] eq "-R") {
+            splice(@packages, $i, 2);
+        }
+    }
+    @packages = grep(/^[^-]/, @packages);
+    my $zypper_action = shift(@packages);
+    $zypper_action = "install" if ($zypper_action eq "in");
+    $zypper_action = "remove" if ($zypper_action eq "rm");
+    if ($zypper_action =~ m/^(install|remove)$/) {
+        push(@{$testapi::distri->{zypper_packages}}, {
+                raw_command => $command,
+                action => $zypper_action,
+                packages => \@packages,
+                return_code => $ret,
+                test => {
+                    module => $autotest::current_test->{name},
+                    category => $autotest::current_test->{category}
+                }
+        });
+    }
+
     upload_logs("/tmp/$log") if $log;
 
     unless (grep { $_ == $ret } @$allow_exit_codes) {
@@ -2006,12 +2031,16 @@ This functions checks if ca-certificates-suse is installed and if it is not it a
 =cut
 
 sub ensure_ca_certificates_suse_installed {
-    return unless is_sle;
+    return unless is_sle || is_sle_micro;
     if (script_run('rpm -qi ca-certificates-suse') == 1) {
         my $host_version = get_var("HOST_VERSION") ? 'HOST_VERSION' : 'VERSION';
         my $distversion = get_required_var($host_version) =~ s/-SP/_SP/r;    # 15 -> 15, 15-SP1 -> 15_SP1
         zypper_call("ar --refresh http://download.suse.de/ibs/SUSE:/CA/SLE_$distversion/SUSE:CA.repo");
-        zypper_call("in ca-certificates-suse");
+        if (is_sle_micro) {
+            transactional::trup_call('--continue pkg install ca-certificates-suse');
+        } else {
+            zypper_call("in ca-certificates-suse");
+        }
     }
 }
 

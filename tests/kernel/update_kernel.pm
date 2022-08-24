@@ -221,6 +221,10 @@ sub install_lock_kernel {
         $package .= '-' . ($packver{$package} // $kernel_version);
     }
 
+    # Workaround for kgraft installation issue due to Retbleed mitigations
+    push @packages, 'crash-kmp-default-7.2.1_k4.12.14_122.124'
+      if is_sle('=12-SP5');
+
     # install and lock needed kernel
     zypper_call("in " . join(' ', @packages), exitcode => [0, 102, 103, 104], timeout => 1400);
     zypper_call("al " . join(' ', @lpackages));
@@ -261,10 +265,8 @@ sub prepare_kgraft {
 
     fully_patch_system;
 
-    my $verlist = zypper_search(q(-s -x kernel-default));
-    my $kernel_version = right_kversion($verlist, $incident_klp_pkg);
-    $verlist = zypper_search(q(-s -x kernel-source));
-    my $src_version = right_kversion($verlist, $incident_klp_pkg);
+    my $kernel_version = find_version('kernel-default', $$incident_klp_pkg{kver});
+    my $src_version = find_version('kernel-source', $$incident_klp_pkg{kver});
     install_lock_kernel($kernel_version, $src_version);
 
     install_klp_product;
@@ -279,16 +281,22 @@ sub prepare_kgraft {
     return $incident_klp_pkg;
 }
 
-sub right_kversion {
-    my ($kversion, $incident_klp_pkg) = @_;
-    my $kver_fragment = $$incident_klp_pkg{kver};
-    $kver_fragment =~ s/\./\\./g;
+sub find_version {
+    my ($packname, $version_fragment) = @_;
+    my $verlist = zypper_search("-s -x -t package $packname");
+    my $version_arg = $version_fragment;
 
-    for my $item (@$kversion) {
-        return $$item{version} if $$item{version} =~ qr/^$kver_fragment\./;
+    $version_fragment =~ s/\./\\./g;
+
+    for my $item (@$verlist) {
+        if ($$item{version} =~ qr/^$version_fragment\./) {
+            die "$packname-$version_arg is retracted."
+              if $$item{status} =~ m/^.R/;
+            return $$item{version};
+        }
     }
 
-    die "Kernel $kver_fragment not found in repositories.";
+    die "$packname-$version_arg not found in repositories.";
 }
 
 sub update_kgraft {
@@ -359,6 +367,8 @@ sub boot_to_console {
     select_console('sol', await_console => 0) if is_ipmi;
     $self->wait_boot;
     $self->select_serial_terminal;
+    assert_script_run('echo 1 >/sys/module/printk/parameters/ignore_loglevel')
+      unless is_sle('<12');
 }
 
 sub run {

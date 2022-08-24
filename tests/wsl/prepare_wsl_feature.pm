@@ -116,6 +116,12 @@ sub run {
         ) if (check_var("WIN_VERSION", "11"));
     }
 
+    record_info 'Port close', 'Closing serial port...';
+    $self->run_in_powershell(
+        cmd => q{$port.close()},
+        code => sub { }
+    );
+
     $self->run_in_powershell(
         cmd => qq{ii C:\\$wsl_appx_filename},
         code => sub {

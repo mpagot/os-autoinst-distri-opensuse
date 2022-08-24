@@ -86,13 +86,13 @@ sub load_host_tests_podman {
     unless (is_sle("<15-sp1")) {
         load_container_engine_test($run_args);
         # In Public Cloud we don't have internal resources
-        load_image_test($run_args) unless is_public_cloud;
+        load_image_test($run_args) unless is_public_cloud || is_alp;
         load_3rd_party_image_test($run_args);
         loadtest 'containers/podman_pods';
         # Firewall is not installed in JeOS OpenStack, MicroOS and Public Cloud images
-        loadtest 'containers/podman_firewall' unless (is_public_cloud || is_openstack || is_microos);
+        loadtest 'containers/podman_firewall' unless (is_public_cloud || is_openstack || is_microos || is_alp);
         # Buildah is not available in SLE Micro and MicroOS
-        loadtest 'containers/buildah' unless (is_sle_micro || is_microos || is_leap_micro);
+        loadtest 'containers/buildah' unless (is_sle_micro || is_microos || is_leap_micro || is_alp);
         # https://github.com/containers/podman/issues/5732#issuecomment-610222293
         # exclude rootless poman on public cloud because of cgroups2 special settings
         loadtest 'containers/rootless_podman' unless (is_sle('=15-sp1') || is_openstack || is_public_cloud);
@@ -103,7 +103,7 @@ sub load_host_tests_docker {
     my ($run_args) = @_;
     load_container_engine_test($run_args);
     # In Public Cloud we don't have internal resources
-    load_image_test($run_args) unless is_public_cloud;
+    load_image_test($run_args) unless is_public_cloud || is_alp;
     load_3rd_party_image_test($run_args);
     # Firewall is not installed in Public Cloud, JeOS OpenStack and MicroOS but it is in SLE Micro
     loadtest 'containers/docker_firewall' unless (is_public_cloud || is_openstack || is_microos);
@@ -155,6 +155,20 @@ sub load_host_tests_helm {
     }
 }
 
+sub load_image_tests_in_k8s {
+    my ($run_args) = @_;
+    my $providers = undef;
+
+    $providers = get_var("PUBLIC_CLOUD_PROVIDER", "GCE,EC2,AZURE");
+
+    foreach (split(',\s*', $providers)) {
+        push @{$run_args->{provider}}, $_;
+        loadtest('containers/push_container_image_to_pc', run_args => $run_args, name => "push_container_image_to_" . $_);
+        push @{$run_args->{provider}}, $_;
+        loadtest('containers/run_container_in_k8s', run_args => $run_args, name => "run_container_in_k8s_" . $_);
+    }
+}
+
 sub update_host_and_publish_hdd {
     # Method used to update pre-installed host images, booting
     # the existing qcow2 and publish a new qcow2
@@ -164,7 +178,9 @@ sub update_host_and_publish_hdd {
         loadtest 'boot/boot_to_desktop';
         loadtest 'containers/update_host';
     }
+    loadtest 'shutdown/cleanup_before_shutdown' if is_s390x;
     loadtest 'shutdown/shutdown';
+    loadtest 'shutdown/svirt_upload_assets' if is_s390x;
 }
 
 sub load_container_tests {
@@ -176,13 +192,13 @@ sub load_container_tests {
     }
 
     # Need to boot a qcow except in JeOS, SLEM and MicroOS where the system is booted already
-    if (get_var('BOOT_HDD_IMAGE') && !(is_jeos || is_sle_micro || is_microos || is_leap_micro)) {
+    if (get_var('BOOT_HDD_IMAGE') && !(is_jeos || is_sle_micro || is_microos || is_leap_micro || is_alp)) {
         loadtest 'installation/bootloader_zkvm' if is_s390x;
         # On Public Cloud we're already booted in the SUT
         loadtest 'boot/boot_to_desktop' unless is_public_cloud;
     }
 
-    if (is_container_image_test() && !(is_jeos || is_sle_micro || is_microos || is_leap_micro)) {
+    if (is_container_image_test() && !(is_jeos || is_sle_micro || is_microos || is_leap_micro) && $runtime ne "k8s") {
         # Container Image tests common
         loadtest 'containers/host_configuration';
         loadtest 'containers/bci_prepare' if (get_var('BCI_TESTS'));
@@ -201,13 +217,14 @@ sub load_container_tests {
                 loadtest('containers/bci_test', run_args => $run_args, name => 'bci_test_' . $run_args->{runtime});
                 # For Base image we also run traditional image.pm test
                 load_image_test($run_args) if (is_sle(">=15-SP3") && check_var('BCI_TEST_ENVS', 'base'));
-            } elsif (is_sle_micro) {
+            } elsif (is_sle_micro || is_alp) {
                 # Test toolbox image updates
                 loadtest 'microos/toolbox';
             } else {
                 # Common openQA image tests
                 load_image_tests_podman($run_args) if (/podman/i);
                 load_image_tests_docker($run_args) if (/docker/i);
+                load_image_tests_in_k8s($run_args) if (/k8s/i);
             }
         } elsif (get_var('REPO_BCI')) {
             loadtest 'containers/host_configuration';

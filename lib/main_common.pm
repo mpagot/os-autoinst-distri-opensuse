@@ -43,6 +43,7 @@ our @EXPORT = qw(
   is_desktop
   is_kernel_test
   is_ltp_test
+  is_systemd_test
   is_livesystem
   is_memtest
   is_memtest
@@ -101,6 +102,7 @@ our @EXPORT = qw(
   load_zdup_tests
   logcurrentenv
   map_incidents_to_repo
+  join_incidents_to_repo
   need_clear_repos
   noupdatestep_is_applicable
   opensuse_welcome_applicable
@@ -119,6 +121,7 @@ our @EXPORT = qw(
   load_extra_tests_kernel
   load_wicked_create_hdd
   load_jeos_openstack_tests
+  load_upstream_systemd_tests
 );
 
 sub init_main {
@@ -270,6 +273,10 @@ sub is_kernel_test {
         || get_var('TRINITY')
         || get_var('NUMA_IRQBALANCE')
         || get_var('TUNED'));
+}
+
+sub is_systemd_test {
+    return get_var('SYSTEMD_TESTSUITE');
 }
 
 # Isolate the loading of LTP tests because they often rely on newer features
@@ -618,9 +625,8 @@ sub load_jeos_tests {
     loadtest "jeos/firstrun";
     loadtest "jeos/image_info";
     loadtest "jeos/record_machine_id";
-    loadtest "console/system_prepare" if is_sle;
     loadtest "console/force_scheduled_tasks";
-    unless (get_var('INSTALL_LTP')) {
+    unless (get_var('INSTALL_LTP') || get_var('SYSTEMD_TESTSUITE')) {
         loadtest "jeos/grub2_gfxmode";
         loadtest "jeos/diskusage" unless is_openstack;
         loadtest "jeos/build_key";
@@ -787,6 +793,22 @@ sub map_incidents_to_repo {
     # do not start with ','
     $ret =~ s/^,//s;
     return $ret;
+}
+
+sub join_incidents_to_repo {
+    my ($incidents) = @_;
+    my @repos;
+
+    for my $k (keys %$incidents) {
+        next unless $incidents->{$k};
+        for my $i (split(/,/, $incidents->{$k})) {
+            if ($i) {
+                push @repos, $i;
+            }
+        }
+    }
+
+    return join(',', @repos);
 }
 
 our %valueranges = (
@@ -1295,6 +1317,7 @@ sub load_consoletests {
     }
     loadtest "console/nginx" if ((is_opensuse && !is_staging) || (is_sle('15+') && !is_desktop));
     loadtest 'console/orphaned_packages_check' if is_jeos || get_var('UPGRADE') || get_var('ZDUP') || !is_sle('<12-SP4');
+    loadtest "console/zypper_log_packages" unless x11tests_is_applicable();
     loadtest "console/consoletest_finish";
 }
 
@@ -1447,6 +1470,7 @@ sub load_x11tests {
             loadtest "x11/reboot_lxde";
         }
     }
+    loadtest "console/zypper_log_packages";
     # Need to skip shutdown to keep backend alive if running rollback tests after migration
     unless (get_var('ROLLBACK_AFTER_MIGRATION')) {
         load_shutdown_tests;
@@ -2709,7 +2733,13 @@ sub load_security_tests {
 sub load_system_prepare_tests {
     loadtest 'console/system_prepare' unless is_opensuse;
     loadtest 'ses/install_ses' if check_var_array('ADDONS', 'ses') || check_var_array('SCC_ADDONS', 'ses');
-    loadtest 'qa_automation/patch_and_reboot' if (is_updates_tests and !get_var("USER_SPACE_TESTSUITES"));
+    if (is_updates_tests and !get_var("USER_SPACE_TESTSUITES")) {
+        if (is_transactional) {
+            loadtest 'transactional/install_updates';
+        } else {
+            loadtest 'qa_automation/patch_and_reboot';
+        }
+    }
     loadtest 'console/integration_services' if is_hyperv || is_vmware;
     loadtest 'console/hostname' unless is_bridged_networking;
     loadtest 'console/install_rt_kernel' if check_var('SLE_PRODUCT', 'SLERT');
@@ -2935,7 +2965,7 @@ sub load_common_opensuse_sle_tests {
     load_create_hdd_tests if (get_var("STORE_HDD_1") || get_var("PUBLISH_HDD_1")) && !get_var('PUBLIC_CLOUD');
     loadtest 'console/network_hostname' if get_var('NETWORK_CONFIGURATION');
     load_installation_validation_tests if get_var('INSTALLATION_VALIDATION');
-    load_transactional_role_tests if is_transactional && (get_var('ARCH') !~ /ppc64|s390/);
+    load_transactional_role_tests if is_transactional && (get_var('ARCH') !~ /ppc64|s390/) && !get_var('INSTALLONLY');
 }
 
 sub load_ssh_key_import_tests {
@@ -3155,7 +3185,7 @@ sub updates_is_applicable {
     return 0 if get_var('INSTALLONLY') || get_var('BOOT_TO_SNAPSHOT') || get_var('DUALBOOT');
     # After upgrading using only the DVD, packages not on the DVD can be
     # updated in the installed system with online repos.
-    return 0 if get_var('UPGRADE') && !check_var('FLAVOR', 'DVD');
+    return 0 if get_var('UPGRADE') && !(check_var('FLAVOR', 'DVD') || check_var('FLAVOR', 'DVD-Updates'));
 
     return 1;
 }
@@ -3277,6 +3307,10 @@ sub load_nfs_tests {
     loadtest "nfs/install";
     loadtest "nfs/run";
     loadtest "nfs/generate_report";
+}
+
+sub load_upstream_systemd_tests {
+    loadtest 'systemd_testsuite/prepare_systemd_and_testsuite';
 }
 
 1;
