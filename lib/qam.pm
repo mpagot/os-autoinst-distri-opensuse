@@ -100,7 +100,11 @@ sub add_test_repositories {
         my $url = "http://dist.suse.de/ibs/SUSE/Updates/SLE-SERVER/12-SP2-LTSS-ERICSSON/$arch/update/";
         zypper_call("--no-gpg-checks ar -f $gpg $url '12-SP2-LTSS-ERICSSON-Updates'");
     }
-
+    if (is_sle('=12-SP3')) {
+        my $arch = get_var('ARCH');
+        my $url = "http://dist.suse.de/ibs/SUSE/Updates/SLE-SERVER/12-SP3-LTSS-TERADATA/$arch/update/";
+        zypper_call("--no-gpg-checks ar -f $gpg $url '12-SP3-LTSS-TERADATA-Updates'");
+    }
     # refresh repositories, inf 106 is accepted because repositories with test
     # can be removed before test start
     zypper_call('ref', timeout => 1400, exitcode => [0, 106]);
@@ -148,7 +152,7 @@ sub advance_installer_window {
     }
     unless (check_screen "$screenName", 60) {
         my $key = check_screen('cannot-access-installation-media') ? "alt-y" : "$cmd{next}";
-        send_key_until_needlematch $screenName, $key, 5, 60;
+        send_key_until_needlematch $screenName, $key, 6, 60;
         record_soft_failure 'Retry most probably due to network problems poo#52319 or failed next click';
     }
 }

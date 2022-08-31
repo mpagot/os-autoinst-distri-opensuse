@@ -10,7 +10,7 @@ use base "opensusebasetest";
 use strict;
 use warnings;
 use testapi;
-use version_utils qw(is_sle is_tumbleweed is_leap is_opensuse is_microos);
+use version_utils qw(is_sle is_tumbleweed is_leap is_opensuse is_microos is_sle_micro);
 use Utils::Architectures;
 use Utils::Backends;
 use jeos qw(expect_mount_by_uuid);
@@ -89,13 +89,13 @@ sub run {
         send_key 'ret';
     } elsif ((is_opensuse && !is_microos && !is_x86_64) || is_sle('=12-sp5')) {
         assert_screen 'jeos-locale', 300;
-        send_key_until_needlematch "jeos-system-locale-$lang", $locale_key{$lang}, 50;
+        send_key_until_needlematch "jeos-system-locale-$lang", $locale_key{$lang}, 51;
         send_key 'ret';
     }
 
     # Select keyboard layout
     assert_screen 'jeos-keylayout', 300;
-    send_key_until_needlematch "jeos-keylayout-$lang", $keylayout_key{$lang}, 30;
+    send_key_until_needlematch "jeos-keylayout-$lang", $keylayout_key{$lang}, 31;
     send_key 'ret';
 
     # Show license
@@ -109,7 +109,7 @@ sub run {
     }
 
     # Select timezone
-    send_key_until_needlematch "jeos-timezone-$lang", $tz_key{$lang}, 10;
+    send_key_until_needlematch "jeos-timezone-$lang", $tz_key{$lang}, 11;
     send_key 'ret';
 
     # Enter password & Confirm
@@ -119,7 +119,7 @@ sub run {
         send_key 'ret';
     }
 
-    if (is_sle) {
+    if (is_sle || is_sle_micro) {
         assert_screen 'jeos-please-register';
         send_key 'ret';
 

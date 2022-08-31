@@ -59,6 +59,7 @@ sub install_runtime_dependencies {
     # kernel-default-extra are only for SLE (in WE)
     # net-tools-deprecated are not available for SLE15
     # ntfsprogs are for SLE in WE, openSUSE has it in default repository
+    # others aren't mandatory to fail whole test when missing
     my @maybe_deps = qw(
       acl
       apparmor-parser
@@ -71,6 +72,7 @@ sub install_runtime_dependencies {
       evmctl
       exfat-utils
       fuse-exfat
+      ibmtss
       kernel-default-extra
       lvm2
       net-tools
@@ -79,6 +81,7 @@ sub install_runtime_dependencies {
       numactl
       psmisc
       quota
+      squashfs
       sssd-tools
       sudo
       tpm-tools
@@ -374,7 +377,7 @@ sub run {
 
     if ($inst_ltp =~ /git/i) {
         install_build_dependencies;
-        install_runtime_dependencies;    # install pidstat (sysstat)
+        install_runtime_dependencies;
 
         # bsc#1024050 - Watch for Zombies
         script_run('(pidstat -p ALL 1 > /tmp/pidstat.txt &)');
