@@ -10,11 +10,19 @@ use Mojo::Base 'publiccloud::basetest';
 use testapi;
 use base 'qesapdeployment';
 
+use constant GIT_CLONE_LOG => '/tmp/git_clone.log';
+
 sub run {
     my ($self) = @_;
     $self->select_serial_terminal;
 
-    $self->qesap_deploy();
+    my $ansible_args = '-i /root/test/qe-sap-deployment/terraform/azure/inventory.yaml ' .
+'-u cloudadmin -b --become-user=root';
+    assert_script_run('ansible all ' . $ansible_args  . ' -a "pwd"');
+    assert_script_run('ansible all ' . $ansible_args  . ' -a "uname -a"');
+    assert_script_run('ansible all ' . $ansible_args  . ' -a "cat /etc/os-release"');
+    assert_script_run('ansible hana ' . $ansible_args  . ' -a "ls -lai /hana/"');
+    assert_script_run('ansible vmhana01 ' . $ansible_args  . ' -a "crm status"');
 }
 
 sub post_fail_hook {

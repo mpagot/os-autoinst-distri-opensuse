@@ -7,31 +7,14 @@
 use strict;
 use warnings;
 use Mojo::Base 'publiccloud::basetest';
-use base 'consoletest';
 use testapi;
-
-use constant GIT_CLONE_LOG => '/tmp/git_clone.log';
-
-use constant QESAPDEPLOY_PREFIX => 'qesapdep';
-
-=head3 get_resource_group
-
-Return a string to be used as cloud resource group.
-It contains the JobId
-=cut
-sub get_resource_group {
-    my $job_id = get_current_job_id();
-    return QESAPDEPLOY_PREFIX . "rg$job_id";
-}
-
+use base 'qesapdeployment';
 
 sub run {
     my ($self) = @_;
     $self->select_serial_terminal;
 
-    enter_cmd 'cd ~/test/qe-sap-deployment';
-    assert_script_run('set -o pipefail ; ./destroy.sh -q -k ~/.ssh/id_rsa | tee destroy.log.txt', (15 * 60));
-
+    $self->qesap_destroy();
 }
 
 sub post_fail_hook {
