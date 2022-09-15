@@ -34,18 +34,23 @@ use mmapi 'get_current_job_id';
 use utils qw(script_retry);
 use File::Basename qw(basename);
 use Mojo::JSON qw(decode_json);
+use qesapdeployment;
 
 use Exporter 'import';
 
 our @EXPORT = qw(
+  clone_trento_deployment
   get_trento_deployment
   get_resource_group
+  get_qesap_resource_group
+  config_cluster
   get_vm_name
   get_acr_name
   get_trento_ip
   get_trento_password
   VM_USER
   SSH_KEY
+  TRENTO_QESAPDEPLOY_PREFIX
   cypress_install_container
   CYPRESS_LOG_DIR
   PODMAN_PULL_LOG
@@ -63,6 +68,9 @@ use constant PODMAN_PULL_LOG => '/tmp/podman_pull.log';
 
 # Lib internal constants
 use constant TRENTO_AZ_PREFIX => 'openqa-trento';
+use constant TRENTO_QESAPDEPLOY_PREFIX => 'qesapdep';
+use constant GITLAB_CLONE_LOG => '/tmp/gitlab_clone.log';
+
 # Parameter 'registry_name' must conform to
 # the following pattern: '^[a-zA-Z0-9]*$'.
 # Azure does not support dash or underscore in ACR name
@@ -70,13 +78,69 @@ use constant TRENTO_AZ_ACR_PREFIX => 'openqatrentoacr';
 use constant CYPRESS_IMAGE_TAG => 'goofy';
 use constant CYPRESS_IMAGE => 'docker.io/cypress/included';
 
-=head1 DESCRIPTION 
+sub my_script_retry {
+    my ($cmd, %args) = @_;
+    my $ecode = $args{expect} // 0;
+    my $retry = $args{retry} // 10;
+    my $delay = $args{delay} // 30;
+    my $timeout = $args{timeout} // 30;
+    my $die = $args{die} // 1;
+
+    my $ret;
+
+    my $exec = "timeout -s 9 $timeout $cmd";
+    # Exclamation mark needs to be moved before the timeout command, if present
+    if (substr($cmd, 0, 1) eq "!") {
+        $cmd = substr($cmd, 1);
+        $cmd =~ s/^\s+//;    # left trim spaces after the exclamation mark
+        $exec = "! timeout $timeout $cmd";
+    }
+    for (1 .. $retry) {
+        # timeout for script_run must be larger than for the 'timeout ...' command
+        $ret = script_run($exec, ($timeout + 3));
+        last if defined($ret) && $ret == $ecode;
+
+        die("Waiting for Godot: $cmd") if $retry == $_ && $die == 1;
+        sleep $delay if ($delay > 0);
+    }
+
+    return $ret;
+}
+
+=head1 DESCRIPTION
 
 Package with common methods and default or
 constant values for Trento tests
 
 =head2 Methods
 =cut
+
+=hean3 clone_trento_deployment
+
+Clone gitlab.suse.de/qa-css/trento
+=cut
+
+sub clone_trento_deployment {
+    my ($self, $work_dir) = @_;
+    # Get the code for the Trento deployment
+    my $gitlab_repo = get_var(TRENTO_GITLAB_REPO => 'gitlab.suse.de/qa-css/trento');
+
+    # The usage of a variable with a different name is to
+    # be able to overwrite the token when manually triggering
+    # the setup_jumphost test.
+    #
+    # Note: this test is mostly only used to create
+    # a HDD image; part of this test and the qcow2 image is this cloned repo.
+    # The key is part of the cloned repo itself so TRENTO_GITLAB_TOKEN (for the moment)
+    # cannot be changed as running init_jumphost
+    my $gitlab_token = get_var(TRENTO_GITLAB_TOKEN => get_required_var('_SECRET_TRENTO_GITLAB_TOKEN'));
+
+    my $gitlab_clone_cmd = 'https://git:' . $gitlab_token . '@' . $gitlab_repo;
+
+    record_info('CLONE', "Clone $gitlab_repo in $work_dir");
+    assert_script_run("cd $work_dir");
+    assert_script_run("git clone $gitlab_clone_cmd . | tee " . GITLAB_CLONE_LOG);
+}
 
 =head3 get_trento_deployment
 
@@ -87,8 +151,10 @@ sub get_trento_deployment {
     my ($self, $work_dir) = @_;
 
     enter_cmd "cd $work_dir";
+    enter_cmd 'echo "Inject --> ' . get_var(TRENTO_GITLAB_TOKEN => get_required_var('_SECRET_TRENTO_GITLAB_TOKEN')) . '"';
     script_run 'read -s GITLAB_TOKEN', 0;
     type_password get_var(TRENTO_GITLAB_TOKEN => get_required_var('_SECRET_TRENTO_GITLAB_TOKEN')) . "\n";
+    enter_cmd 'echo "GITLAB_TOKEN:__${GITLAB_TOKEN}__"';
 
     # Script from a release
     if (get_var('TRENTO_DEPLOY_VER')) {
@@ -104,16 +170,33 @@ sub get_trento_deployment {
         my $gitlab_namespace = $gitlab_url[-2];
         my $gitlab_project = $gitlab_url[-1];
 
+        enter_cmd 'echo "------------------------------------------------"';
+        assert_script_run('echo "PRIVATE-TOKEN: ${GITLAB_TOKEN}"');
+        enter_cmd 'echo "------------------------------------------------"';
         assert_script_run('echo "PRIVATE-TOKEN: ${GITLAB_TOKEN}" > gitlab_conf');
+        enter_cmd 'echo "------------------------------------------------"';
+        enter_cmd 'cat gitlab_conf';
+        enter_cmd 'echo "------------------------------------------------"';
         my $curl_cmd = 'curl -s ' .
           '-H @gitlab_conf';
+        #"--header \"PRIVATE-TOKEN: $gitlab_token\" ";
         my $gitlab_api = 'https://gitlab.suse.de/api/v4/projects';
 
         # Get the ID of the requested project
+        enter_cmd 'curl --version';
+        enter_cmd 'jq --version';
+        enter_cmd 'jq --help';
+        script_run($curl_cmd .
+              " \"${gitlab_api}/${gitlab_namespace}%2F${gitlab_project}\" | jq");
+        script_run($curl_cmd .
+              " \"${gitlab_api}/${gitlab_namespace}%2F${gitlab_project}\" | jq '.id'");
+        script_run($curl_cmd .
+              " \"${gitlab_api}/${gitlab_namespace}%2F${gitlab_project}\" | jq -r '.id'");
         my $repo_id_cmd = $curl_cmd .
           " \"$gitlab_api/$gitlab_namespace%2F$gitlab_project\"";
         my $repo_output = decode_json(script_output($repo_id_cmd));
         my $repo_id = $repo_output->{id};
+        record_info("REPO ID", "repo_id_cmd:$repo_id_cmd repo_output:$repo_output repo_id:$repo_id");
 
         my $repo_url = "$gitlab_api/$repo_id";
         my $rel_api_url = "$repo_url/releases/v$ver";
@@ -145,14 +228,21 @@ sub get_trento_deployment {
     # Script from Gitlab
     else {
         my $git_branch = get_var(TRENTO_GITLAB_BRANCH => 'master');
+        script_run 'pwd';
+        script_run 'ls -lai';
 
-        # Test that the token in worker.ini and the one in the qcow2 match
-        my $qcow_token_cmd = 'git config --get remote.origin.url' .
-          '|cut -d@ -f1|cut -d: -f3';
-        assert_script_run "QCOW_TOKEN=\"\$($qcow_token_cmd)\"";
-        my $different_tokens = script_run '[[ "$GITLAB_TOKEN" == "$QCOW_TOKEN" ]]';
-        die "Invalid gitlab token" if ($different_tokens);
-
+        if (script_run('git rev-parse --is-inside-work-tree') != 0) {
+            $self->clone_trento_deployment($work_dir);
+        }
+        else {
+            # Test that the token in worker.ini and the one in the qcow2 match
+            my $qcow_token_cmd = 'git config --get remote.origin.url' .
+              '|cut -d@ -f1|cut -d: -f3';
+            assert_script_run "QCOW_TOKEN=\"\$($qcow_token_cmd)\"";
+            script_run 'echo "GITLAB_TOKEN:$GITLAB_TOKEN   QCOW_TOKEN=$QCOW_TOKEN"';
+            my $different_tokens = script_run '[[ "$GITLAB_TOKEN" == "$QCOW_TOKEN" ]]';
+            die "Invalid gitlab token" if ($different_tokens);
+        }
         # Switch branch and get latest
         assert_script_run("git checkout $git_branch");
         assert_script_run("git pull origin $git_branch");
@@ -168,6 +258,66 @@ It contains the JobId
 sub get_resource_group {
     my $job_id = get_current_job_id();
     return TRENTO_AZ_PREFIX . "-rg-$job_id";
+}
+
+=head3 get_qesap_resource_group
+
+Return the resource group used
+by the qe-sap-deployment
+=cut
+
+sub get_qesap_resource_group {
+    my $job_id = get_current_job_id();
+    my $result = script_output("az group list --query \"[].name\" -o tsv | grep $job_id | grep " . TRENTO_QESAPDEPLOY_PREFIX);
+    record_info('QESAP RG', "result:$result");
+    return $result;
+}
+
+=head3 config_cluster
+
+=cut
+
+sub config_cluster {
+    my ($self, $region) = @_;
+
+    # Get the code for the qe-sap-deployment
+    qesap_create_folder_tree();
+    qesap_get_deployment_code();
+    qesap_pip_install();
+
+    # tfvars file
+    my $qesap_provider = qesap_translate_provider_name();
+
+    qesap_configure_tfvar($qesap_provider,
+        $region,
+        $self->TRENTO_QESAPDEPLOY_PREFIX . get_current_job_id(),
+        get_required_var('QESAPDEPLOY_OS_VER'),
+        SSH_KEY . '.pub');
+
+    # variables.sh file
+    qesap_configure_variables($qesap_provider,
+        get_required_var('SCC_REGCODE_SLES4SAP'));
+
+    # Ansible blob file
+    qesap_configure_hanamedia(get_var('QESAPDEPLOY_SAPCAR'),
+        get_var('QESAPDEPLOY_IMDB_SERVER'),
+        get_var('QESAPDEPLOY_IMDB_CLIENT'));
+
+    my %variables;
+    $variables{REGION} = $region;
+    $variables{DEPLOYMENTNAME} = $self->TRENTO_QESAPDEPLOY_PREFIX . get_current_job_id();
+    $variables{SCC_REGCODE_SLES4SAP} = get_required_var('SCC_REGCODE_SLES4SAP');
+    qesap_configure_conf(openqa_variables => \%variables);
+    #qesap_execute(cmd => 'configure');
+    qesap_upload_logs();
+}
+
+=head3 trento_qesap_deploy
+
+=cut
+
+sub trento_qesap_deploy {
+    qesap_deploy(SSH_KEY);
 }
 
 =head3 get_vm_name
@@ -241,7 +391,7 @@ sub az_delete_group {
     my $az_cmd = 'az group delete ' .
       '--resource-group ' . get_resource_group() .
       ' --yes';
-    script_retry($az_cmd, timeout => 600, retry => 5, delay => 60);
+    my_script_retry($az_cmd, timeout => 600, retry => 5, delay => 60);
 }
 
 =head3 az_vm_ssh_cmd
@@ -382,6 +532,16 @@ sub cypress_log_upload {
     my ($self, @log_filter) = @_;
     my $find_cmd = 'find ' . CYPRESS_LOG_DIR . ' -type f \( -iname \*' . join(' -o -iname \*', @log_filter) . ' \)';
 
+    # if everything is fine save the logs
+    script_run('find ' . CYPRESS_LOG_DIR . ' -type f');
+    script_run('echo "BEFORE:__' . $_ . '__"') for split(/\n/, script_output($find_cmd));
+
+    # rename .png that has space in the filename
+    #script_output('for f in '.CYPRESS_LOG_DIR.'; do mv "$f" "${f// /_}"; done');
+
+    #script_output('find '.CYPRESS_LOG_DIR.' -type f');
+    #script_run('echo "AFTER:__'.$_.'__"') for split(/\n/, script_output($find_cmd));
+
     upload_logs("$_") for split(/\n/, script_output($find_cmd));
 }
 
@@ -425,7 +585,7 @@ sub cypress_exec {
 
     record_info('CY EXEC', 'Cypress exec:' . $cmd);
     my $image_name = CYPRESS_IMAGE . ":" . $self->cypress_version;
-
+    record_info('CY VER', 'Cypress image:' . $image_name);
     # Container is executed with --name to simplify the log retrieve.
     # To do so, we need to rm present container with the same name
     assert_script_run('podman images');

@@ -22,11 +22,21 @@ sub run {
     my $resource_group = $self->get_resource_group;
     my $machine_name = $self->get_vm_name;
     my $acr_name = $self->get_acr_name;
+    # my $openqa_ttl = get_var('MAX_JOB_TIME', 7200) + get_var('PUBLIC_CLOUD_TTL_OFFSET', 300);
+    # my $created_by = get_var('PUBLIC_CLOUD_RESOURCE_NAME', 'openqa-vm');
+    # my $tags = "openqa-cli-test-tag=$job_id openqa_created_by=$created_by openqa_ttl=$openqa_ttl";
+
+    # Configure default location and create Resource group
+    # assert_script_run("az configure --defaults location=southeastasia");
 
     my $basedir = '/root/test';
     enter_cmd "cd $basedir";
 
+    # can be controlled with a variable
+    # my $sr = ' ./';
     my $script_run = 'set -o pipefail ; ./';
+
+    ###########################
     # Run the Trento deployment
 
     my $script_id = '00.040';
@@ -94,6 +104,7 @@ sub run {
     my $acr_server = script_output("az acr list -g $resource_group --query \"[0].loginServer\" -o tsv");
     my $acr_username = script_output("az acr credential show -n $acr_name --query username -o tsv");
     my $acr_secret = script_output("az acr credential show -n $acr_name --query 'passwords[0].value' -o tsv");
+    record_info('ACR credentials', "$acr_username|$acr_secret");
 
     # Check what registry has been created by trento_acr_azure
     assert_script_run("az acr repository list -n $acr_name");
@@ -122,6 +133,11 @@ sub run {
     assert_script_run($cmd, 600);
     upload_logs($deploy_script_log);
     $self->k8s_logs(qw(web runner));
+
+    $self->az_vm_ssh_cmd('kubectl exec --stdin --tty deploy/trento-server-runner /usr/bin/trento-runner version', $machine_ip);
+    script_run('ls -lai *.txt', 180);
+
+
 }
 
 sub post_fail_hook {

@@ -47,6 +47,13 @@ sub run {
       'curl -I -L --silent --output /dev/null --write-out "%{http_code}" ' . $trento_url .
       ') -eq 200 ';
     script_retry($curl_cmd_test, retry => 5, delay => 60);
+
+    # only available from curl 7.76.0 (and for the moment we have 7.66)
+    #assert_script_run('curl -k  ' . $trento_url . ' --fail-with-body');
+    $curl_cmd_test = 'test $(' .
+      'curl -I -L --silent --output /dev/null --write-out "%{http_code}" ' . $trento_url .
+      ') -eq 200 ';
+    script_retry($curl_cmd_test, retry => 5, delay => 60);
 }
 
 sub post_fail_hook {
