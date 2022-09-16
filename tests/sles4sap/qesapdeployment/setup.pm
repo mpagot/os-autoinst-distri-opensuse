@@ -9,16 +9,16 @@ use warnings;
 use Mojo::Base 'publiccloud::basetest';
 use base 'consoletest';
 use testapi;
-use base 'qesapdeployment';
+use qesapdeployment;
 
 sub run {
     my ($self) = @_;
     $self->select_serial_terminal;
 
     # Get the code for the qe-sap-deployment
-    $self->qesap_create_folder_tree();
-    $self->qesap_get_deployment_code();
-    $self->qesap_pip_install();
+    qesap_create_folder_tree();
+    qesap_get_deployment_code();
+    qesap_pip_install();
 
     # 'az' and 'terraform' are preinstalled in the PcTools qcow2, we test their version
     assert_script_run('az --version');

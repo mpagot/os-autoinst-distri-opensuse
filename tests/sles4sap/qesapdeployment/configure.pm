@@ -8,7 +8,8 @@ use strict;
 use warnings;
 use Mojo::Base 'publiccloud::basetest';
 use testapi;
-use base 'qesapdeployment';
+use mmapi 'get_current_job_id';
+use qesapdeployment;
 
 sub run {
     my ($self) = @_;
@@ -20,16 +21,18 @@ sub run {
     # tfvars file
     my $qesap_provider = $self->qesap_translate_provider_name();
 
-    $self->qesap_configure_tfvar($qesap_provider,
+    qesap_configure_tfvar($qesap_provider,
         $provider->provider_client->region,
-        get_required_var('QESAPDEPLOY_OS_VER'));
+        'qesapdep' . get_current_job_id(),
+        get_required_var('QESAPDEPLOY_OS_VER'),
+        '/root/.ssh/id_rsa.pub');
 
     # variables.sh file
-    $self->qesap_configure_variables($qesap_provider,
+    qesap_configure_variables($qesap_provider,
         get_required_var('SCC_REGCODE_SLES4SAP'));
 
     # Ansible blob file
-    $self->qesap_configure_hanamedia(get_var('QESAPDEPLOY_SAPCAR'),
+    qesap_configure_hanamedia(get_var('QESAPDEPLOY_SAPCAR'),
         get_var('QESAPDEPLOY_IMDB_SERVER'),
         get_var('QESAPDEPLOY_IMDB_CLIENT'));
 }
@@ -37,8 +40,7 @@ sub run {
 sub post_fail_hook {
     my ($self) = shift;
     $self->select_serial_terminal;
-    enter_cmd 'cd  ~/test/qe-sap-deployment';
-    $self->qesap_upload_logs('', 1);
+    qesap_upload_logs('', 1);
     $self->SUPER::post_fail_hook;
 }
 
