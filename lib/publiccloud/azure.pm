@@ -144,9 +144,12 @@ sub upload_img {
 
     # Check if blob already exists
     my $container = $self->container;
-    my $blobs = script_output("az storage blob list --container-name '$container' --account-name '$storage_account' | jq '.[].name'");
+    # AZURE_STORAGE_KEY=$(az storage account keys list --resource-group openqa-upload --account-name eisleqasapopenqa --query "[0].[value]" -o tsv) az storage blob list --container-name 'sle-images' --account-name 'eisleqasapopenqa' --auth-mode key --query "[].[name]" -o tsv
+    my $blobs = script_output("AZURE_STORAGE_KEY=$key az storage blob list --container-name '$container' --account-name '$storage_account' --query '[].[name]' -o tsv");
     $blobs =~ s/^\s+|\s+$//g;    # trim
     my @blobs = split(/\n/, $blobs);
+    record_info('BLOBS', join("\n", @blobs));
+    record_info('IMG_NAME', $img_name);
     if (grep(/$img_name/, @blobs)) {
         record_info('blob', "Blob already exists, omitting upload\nExisting blobs:\n$blobs");
     } else {
