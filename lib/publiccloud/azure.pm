@@ -125,7 +125,8 @@ sub upload_img {
         assert_script_run("xz -d $file", timeout => 60 * 5);
         $file =~ s/\.xz$//;
     }
-    my $file_md5 = script_output("md5sum $file | awk '{print $1}'");
+    my $file_md5 = script_output("md5sum $file | awk '{print \$1}'");
+    record_info('MD5', $file_md5);
 
     my ($img_name) = $file =~ /([^\/]+)$/;
     my $sku = (check_var('PUBLIC_CLOUD_AZURE_SKU', 'gen2')) ? 'V2' : 'V1';
@@ -140,15 +141,14 @@ sub upload_img {
     $self->create_resources($storage_account) if (!$rg_exist);
 
     my $key = $self->get_storage_account_keys($storage_account);
-
-
+    assert_script_run("export AZURE_STORAGE_KEY=$key");
 
     # Check if blob already exists
     my $container = $self->container;
-    my $cmd_blob = "AZURE_STORAGE_KEY=$key az storage blob";
+    my $cmd_blob = "az storage blob";
     my $blob_args = "--container-name '$container' --account-name '$storage_account' --auth-mode key";
     # AZURE_STORAGE_KEY=$(az storage account keys list --resource-group openqa-upload --account-name eisleqasapopenqa --query "[0].[value]" -o tsv) az storage blob list --container-name 'sle-images' --account-name 'eisleqasapopenqa' --auth-mode key --query "[].[name]" -o tsv
-    my $blobs_exist = script_output("$cmd_blob exixts $blob_args --name $img_name -o tsv");
+    my $blobs_exist = script_output("$cmd_blob exists $blob_args --name $img_name -o tsv");
     my $blobs = script_output("$cmd_blob list $blob_args --query '[].[name]' -o tsv");
     $blobs =~ s/^\s+|\s+$//g;    # trim
     my @blobs = split(/\n/, $blobs);
