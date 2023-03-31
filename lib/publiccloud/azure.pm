@@ -125,6 +125,7 @@ sub upload_img {
         assert_script_run("xz -d $file", timeout => 60 * 5);
         $file =~ s/\.xz$//;
     }
+    my $file_md5 = script_output("md5sum $file | awk '{print $1}'");
 
     my ($img_name) = $file =~ /([^\/]+)$/;
     my $sku = (check_var('PUBLIC_CLOUD_AZURE_SKU', 'gen2')) ? 'V2' : 'V1';
@@ -144,20 +145,32 @@ sub upload_img {
 
     # Check if blob already exists
     my $container = $self->container;
+    my $cmd_blob = "AZURE_STORAGE_KEY=$key az storage blob";
+    my $blob_args = "--container-name '$container' --account-name '$storage_account' --auth-mode key";
     # AZURE_STORAGE_KEY=$(az storage account keys list --resource-group openqa-upload --account-name eisleqasapopenqa --query "[0].[value]" -o tsv) az storage blob list --container-name 'sle-images' --account-name 'eisleqasapopenqa' --auth-mode key --query "[].[name]" -o tsv
-    my $blobs = script_output("AZURE_STORAGE_KEY=$key az storage blob list --container-name '$container' --account-name '$storage_account' --query '[].[name]' -o tsv");
+    my $blobs_exist = script_output("$cmd_blob exixts $blob_args --name $img_name -o tsv");
+    my $blobs = script_output("$cmd_blob list $blob_args --query '[].[name]' -o tsv");
     $blobs =~ s/^\s+|\s+$//g;    # trim
     my @blobs = split(/\n/, $blobs);
     record_info('BLOBS', join("\n", @blobs));
     record_info('IMG_NAME', $img_name);
     if (grep(/$img_name/, @blobs)) {
         record_info('blob', "Blob already exists, omitting upload\nExisting blobs:\n$blobs");
+        my $blob_md5 = script_output("$cmd_blob show $blob_args --name $img_name --query=\"[name,properties.creationTime,properties.contentSettings.contentMd5]\" -o tsv");
+        if (index($blob_md5, $file_md5) != -1) {
+            record_info('BLOBS VALIDATION', "The blob $img_name has the expected MD5 $file_md5");
+        }
     } else {
         record_info("blobs", $blobs);
         # Note: VM images need to be a page blob type
-        assert_script_run('az storage blob upload --max-connections 4 --account-name '
-              . $storage_account . ' --account-key ' . $key . ' --container-name ' . $self->container
-              . ' --type page --file ' . $file . ' --name ' . $img_name, timeout => 60 * 60 * 2);
+        assert_script_run("$cmd_blob upload $blob_args --max-connections 4" .
+            " --type page --file $file --name $img_name",
+            timeout => 60 * 60 * 2);
+        # Just at the end upload the MD5. Take care that Azure does anything with it.
+        # The metadata is used here just to detect two job eventually running
+        # this function in parallel.
+        assert_script_run("$cmd_blob update $blob_args" .
+            " --name $img_name --content-md5 $file_md5");
     }
 
     if ($arch eq 'Arm64') {
