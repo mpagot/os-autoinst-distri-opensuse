@@ -29,10 +29,10 @@ sub run {
     my $img_url = get_required_var('PUBLIC_CLOUD_IMAGE_LOCATION');
     my ($img_name) = $img_url =~ /([^\/]+)$/;
 
-    if (my $img_id = $provider->find_img($img_name)) {
-        record_info('Info', "Image $img_id already exists!");
-        return;
-    }
+    #if (my $img_id = $provider->find_img($img_name)) {
+    #    record_info('Info', "Image $img_id already exists!");
+    #    return;
+    #}
 
     # Download the given image via wget. Note that by default wget retries 20 times before giving up
     my $wget_cmd = "wget -q --server-response --no-check-certificate --retry-connrefused --retry-on-host-error";
