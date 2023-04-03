@@ -144,6 +144,7 @@ sub upload_img {
     assert_script_run("export AZURE_STORAGE_KEY=$key");
 
     # Check if blob already exists
+    my $upload_time = 60 * 60 * 2;
     my $container = $self->container;
     my $cmd_blob = "az storage blob";
     my $blob_args = "--container-name '$container' --account-name '$storage_account' --auth-mode key";
@@ -156,21 +157,26 @@ sub upload_img {
     record_info('IMG_NAME', $img_name);
     if (grep(/$img_name/, @blobs)) {
         record_info('blob', "Blob already exists, omitting upload\nExisting blobs:\n$blobs");
-        my $blob_info = decode_azure_json(script_output("$cmd_blob show $blob_args --name $img_name " .
-                  '--query="{name: name,createTime: properties.creationTime,md5: properties.contentSettings.contentMd5}" -o json'));
-        record_info('BLOBS MD5', $blob_info->{md5});
-        if (index($blob_info->{md5}, $file_md5) != -1) {
-            record_info('BLOBS VALIDATION', "The blob $img_name has the expected MD5 $file_md5");
+        my $start_time = time();
+        my $cmd_show = "$cmd_blob show $blob_args --name $img_name " .
+          '--query="{name: name,createTime: properties.creationTime,md5: properties.contentSettings.contentMd5}"' .
+          ' -o json'
+          while (time() - $start_time < $upload_time) {
+            my $blob_info = decode_azure_json(script_output($cmd_show));
+            record_info('Compare MD5', "File Md5:$file_md5 \n Blob MD5:$blob_info->{md5}");
+            last if (index($blob_info->{md5}, $file_md5) != -1);
+            sleep 60 * 5;
         }
     } else {
         record_info("blobs", $blobs);
         # Note: VM images need to be a page blob type
         assert_script_run("$cmd_blob upload $blob_args --max-connections 4" .
               " --type page --file $file --name $img_name",
-            timeout => 60 * 60 * 2);
+            timeout => $upload_time);
         # Just at the end upload the MD5. Take care that Azure does anything with it.
         # The metadata is used here just to detect two job eventually running
         # this function in parallel.
+        # Test is using MD5 like a flag to mark that upload is completed.
         assert_script_run("$cmd_blob update $blob_args" .
               " --name $img_name --content-md5 $file_md5");
     }
