@@ -387,9 +387,6 @@ sub qesap_prepare_env {
     push(@log_files, $paths{qesap_conf_trgt});
 
     record_info("QESAP conf", "Generating all terraform and Ansible configuration files");
-    push(@log_files, "$paths{terraform_dir}/$provider/terraform.tfvars");
-    push(@log_files, "$paths{deployment_dir}/ansible/playbooks/vars/hana_media.yaml");
-    my $hana_vars = "$paths{deployment_dir}/ansible/playbooks/vars/hana_vars.yaml";
     my $exec_rc = qesap_execute(cmd => 'configure', verbose => 1);
 
     if (check_var('PUBLIC_CLOUD_PROVIDER', 'EC2')) {
@@ -398,6 +395,10 @@ sub qesap_prepare_env {
         qesap_create_aws_credentials($data->{access_key_id}, $data->{secret_access_key});
     }
 
+    push(@log_files, "$paths{terraform_dir}/$provider/terraform.tfvars");
+    my $hana_media = "$paths{deployment_dir}/ansible/playbooks/vars/hana_media.yaml";
+    push(@log_files, $hana_media) if (script_run("test -e $hana_media") == 0);
+    my $hana_vars = "$paths{deployment_dir}/ansible/playbooks/vars/hana_vars.yaml";
     push(@log_files, $hana_vars) if (script_run("test -e $hana_vars") == 0);
     qesap_upload_logs(failok => 1);
     die("Qesap deployment returned non zero value during 'configure' phase.") if $exec_rc;
