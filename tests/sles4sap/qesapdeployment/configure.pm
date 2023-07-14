@@ -49,6 +49,7 @@ sub run {
         # escape needed by 'sed'
         # but not implemented in file_content_replace() yet poo#120690
         $variables{HANA_TOKEN} =~ s/\&/\\\&/g;
+        set_var("QESAPDEPLOY_HANA_TOKEN_AFTER", $variables{HANA_TOKEN});
     }
     $variables{HANA_SAR} = get_required_var("QESAPDEPLOY_SAPCAR");
     $variables{HANA_CLIENT_SAR} = get_required_var("QESAPDEPLOY_IMDB_CLIENT");
