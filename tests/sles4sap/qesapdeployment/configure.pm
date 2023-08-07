@@ -28,6 +28,9 @@ sub run {
     }
     else {
         $variables{STORAGE_ACCOUNT_NAME} = get_required_var('STORAGE_ACCOUNT_NAME');
+        record_info('IMAGE GET FROM PC', join(' ',
+                'get_image_id:', $provider->get_image_id(),
+                'get_image_uri:', $provider->get_image_uri()));
         $variables{OS_VER} = $provider->get_image_id();
     }
     $variables{OS_OWNER} = get_var('QESAPDEPLOY_CLUSTER_OS_OWNER', 'amazon') if check_var('PUBLIC_CLOUD_PROVIDER', 'EC2');
