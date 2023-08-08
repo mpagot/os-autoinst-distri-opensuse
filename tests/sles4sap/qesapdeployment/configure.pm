@@ -28,7 +28,21 @@ sub run {
     }
     else {
         $variables{STORAGE_ACCOUNT_NAME} = get_required_var('STORAGE_ACCOUNT_NAME');
-        $variables{OS_VER} = $provider->get_image_id();
+
+        my $img_url = get_required_var('PUBLIC_CLOUD_IMAGE_LOCATION');
+        my ($file) = $img_url =~ /([^\/]+)$/;
+
+        if ($file =~ m/vhdfixed\.xz$/) {
+            $file =~ s/\.xz$//;
+        }
+
+        my ($img_name) = $file =~ /([^\/]+)$/;
+        my $gen = (check_var('PUBLIC_CLOUD_AZURE_SKU', 'gen2')) ? 'V2' : 'V1';
+        $img_name =~ s/\.vhdfixed/-$gen.vhd/;
+
+        record_info("GET_IMAGE_URI", $provider->get_image_uri());
+        record_info("IMG_NAME", $img_name);
+        $variables{OS_VER} = $img_name;
     }
     $variables{OS_OWNER} = get_var('QESAPDEPLOY_CLUSTER_OS_OWNER', 'amazon') if check_var('PUBLIC_CLOUD_PROVIDER', 'EC2');
 
