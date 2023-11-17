@@ -33,6 +33,7 @@ sub run {
 
     assert_script_run("ps aux | nl");
 
+    assert_script_run("ip -V");
     assert_script_run("ip -c=never a s");
     assert_script_run("ip -c=never r s");
     assert_script_run("ip -c=never -6 r s");
