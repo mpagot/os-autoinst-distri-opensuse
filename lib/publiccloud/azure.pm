@@ -64,9 +64,11 @@ sub resource_group_exist {
 
 sub get_image_id {
     my ($self, $img_url) = @_;
+    record_info 'OS DETECTION', "azure::get_image_id 1 --> img_url : $img_url";
     $img_url //= get_var('PUBLIC_CLOUD_IMAGE_LOCATION');
     # Very special case for Azure. if image id is not provided and OFFER is then return empty string.
     return "" if ((!$img_url) && get_var('PUBLIC_CLOUD_AZURE_OFFER'));
+    record_info 'OS DETECTION', "azure::get_image_id 2 --> img_url : $img_url";
     return $self->SUPER::get_image_id($img_url);
 }
 
@@ -162,13 +164,15 @@ If either blob or the image version were not found then the default empty list o
 
 sub find_img {
     my ($self, $name) = @_;
-
+    record_info 'OS DETECTION', "azure::find_img 1 --> name: $name";
     return undef unless ($self->resource_group_exist());
-
+    record_info 'OS DETECTION', "azure::find_img 2 --> name: $name";
     $name = $self->get_blob_name($name);
+    record_info 'OS DETECTION', "azure::find_img 3 --> name: $name";
 
     # 1) Checks if the image blob exists
     return undef unless ($self->img_blob_exists($name));
+    record_info 'OS DETECTION', "azure::find_img 4 --> name: $name";
 
     # 2) Check if the image version exists
     return $self->get_image_version();
@@ -297,6 +301,7 @@ sub get_image_definition {
 
 sub get_blob_name {
     my ($self, $file) = @_;
+    record_info 'OS DETECTION', "azure::get_blob_name 1 --> file: $file";
 
     # check if the $file is non-zero length string
     die('The image name is wrong.') unless (defined($file) && length($file) > 3);

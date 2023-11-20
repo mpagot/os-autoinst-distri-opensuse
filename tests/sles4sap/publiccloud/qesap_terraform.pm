@@ -118,13 +118,18 @@ sub run {
 
     my $subscription_id = $provider->{provider_client}{subscription};
     my $os_image_name;
-    # This section is only needed by tests using images uploaded
-    # with publiccloud_upload_img
+    record_info 'OS DETECTION', "qesap_terraform 1 --> os_image_name: $os_image_name";
     if (is_azure() && get_var('PUBLIC_CLOUD_IMAGE_LOCATION')) {
+        # This section is only needed by Azure tests using images uploaded
+        # with publiccloud_upload_img. This is because qe-sap-deployment
+        # is still not able to use images from Azure Gallery
         $os_image_name = $provider->get_blob_uri(get_var('PUBLIC_CLOUD_IMAGE_LOCATION'));
+        record_info 'OS DETECTION', "qesap_terraform::get_blob_uri 2 --> os_image_name: $os_image_name";
     } else {
         $os_image_name = $provider->get_image_id();
+        record_info 'OS DETECTION', "qesap_terraform::get_image_id 3 --> os_image_name: $os_image_name";
     }
+    record_info 'OS DETECTION', "qesap_terraform 4 --> os_image_name: $os_image_name";
     set_var('SLES4SAP_OS_IMAGE_NAME', $os_image_name);
 
     set_var_output('USE_SAPCONF', 'true');

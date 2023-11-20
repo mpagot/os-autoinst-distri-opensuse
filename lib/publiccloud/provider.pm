@@ -235,10 +235,12 @@ If PUBLIC_CLOUD_IMAGE_ID is set, then this value will be used
 
 sub get_image_id {
     my ($self, $img_url) = @_;
+    record_info 'OS DETECTION', "provider::get_image_id 1 --> img_url : $img_url";
 
     my $predefined_id = get_var('PUBLIC_CLOUD_IMAGE_ID');
     return $predefined_id if ($predefined_id);
 
+    record_info 'OS DETECTION', "provider::get_image_id 2 --> PUBLIC_CLOUD_IMAGE_URI";
     # If a URI is given, then no image ID should be determined
     return '' if (get_var('PUBLIC_CLOUD_IMAGE_URI'));
 
@@ -246,11 +248,14 @@ sub get_image_id {
     $img_url //= get_required_var('PUBLIC_CLOUD_IMAGE_LOCATION');
     my ($img_name) = $img_url =~ /([^\/]+)$/;
     $self->{image_cache} //= {};
+    record_info 'OS DETECTION', "provider::get_image_id 3 --> img_url : $img_url image_cache : " . $self->{image_cache};
     return $self->{image_cache}->{$img_name} if ($self->{image_cache}->{$img_name});
 
+    record_info 'OS DETECTION', "provider::get_image_id 3 --> img_name : $img_name image_cache : " . $self->{image_cache};
     my $image_id = $self->find_img($img_name);
     die("Image $img_name is not available in the cloud provider") unless ($image_id);
     $self->{image_cache}->{$img_name} = $image_id;
+    record_info 'OS DETECTION', "provider::get_image_id 4 --> image_id : $image_id";
     return $image_id;
 }
 
