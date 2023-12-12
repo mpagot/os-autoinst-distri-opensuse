@@ -1,5 +1,5 @@
 {
-  "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
+  "build": { "dockerfile": "Dockerfile" },
   "features": {
   },
   "customizations": {
@@ -13,5 +13,5 @@
       ]
     }
   },
-  "postCreateCommand": "${CODESPACE_VSCODE_FOLDER}/install-dependencies.sh"
+  "postCreateCommand": "echo "\--->>> $(pwd) <<<---\"",
 }
