@@ -5,7 +5,7 @@ zypper dup -y
 zypper in -y os-autoinst-distri-opensuse-deps-worker perl-JSON-Validator gnu_parallel
 
 # other dependency that are needed
-zypper in -y make git python311 python311-devel python311-yamllint python311-PyYAML perl-App-cpanminus gcc-c++ libxml2-devel libssh2-devel libexpat-devel dbus-1-devel perl-Code-TidyAll
+zypper in -y make git vim gcc-c++ libxml2-devel libssh2-devel libexpat-devel dbus-1-devel python311 python311-devel python311-yamllint python311-PyYAML perl-App-cpanminus perl-Code-TidyAll
 
 # step suggested by the CONTRIBUTING.md
 cd ${CODESPACE_VSCODE_FOLDER}

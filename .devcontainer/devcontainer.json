@@ -13,5 +13,5 @@
       ]
     }
   },
-  "postCreateCommand": "install-dependencies.sh"
+  "postCreateCommand": "./install-dependencies.sh"
 }
