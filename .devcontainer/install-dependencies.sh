@@ -15,5 +15,6 @@ echo "###### CODESPACE_VSCODE_FOLDER: ${CODESPACE_VSCODE_FOLDER} #######"
 pwd
 ls -lai .
 ls -lai ${CODESPACE_VSCODE_FOLDER}
+ls -lai /workspaces || echo "### LATER ###"
 #cd ${CODESPACE_VSCODE_FOLDER}
 #make prepare
