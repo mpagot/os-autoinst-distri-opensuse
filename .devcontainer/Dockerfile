@@ -5,10 +5,11 @@ FROM registry.opensuse.org/opensuse/tumbleweed:latest
 COPY . /tmp/
 
 # Make the script executable
-RUN chmod +x /tmp/install-dependency.sh
+#RUN chmod +x /tmp/install-dependency.sh
 
 # Run the script
-RUN /run/install-dependency.sh
+RUN ls -lai /tmp/
+RUN /tmp/install-dependency.sh
 #RUN zypper dup -y
 #RUN zypper lr
 #RUN zypper in -y os-autoinst-distri-opensuse-deps perl-JSON-Validator gnu_parallel || echo "---zypper failure---"
