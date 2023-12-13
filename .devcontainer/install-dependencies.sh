@@ -8,5 +8,10 @@ zypper in -y os-autoinst-distri-opensuse-deps perl-JSON-Validator gnu_parallel
 zypper in -y make git vim gcc-c++ libxml2-devel libssh2-devel libexpat-devel dbus-1-devel python311 python311-devel python311-yamllint python311-PyYAML perl-App-cpanminus perl-Code-TidyAll
 
 # step suggested by the CONTRIBUTING.md
+echo "#########################################"
+pwd
+
+echo "###### ${CODESPACE_VSCODE_FOLDER} #######"
+ls -lai ${CODESPACE_VSCODE_FOLDER}
 cd ${CODESPACE_VSCODE_FOLDER}
 make prepare
