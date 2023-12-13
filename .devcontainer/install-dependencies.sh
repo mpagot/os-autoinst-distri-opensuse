@@ -11,7 +11,9 @@ zypper in -y make git vim gcc-c++ libxml2-devel libssh2-devel libexpat-devel dbu
 echo "#########################################"
 pwd
 
-echo "###### ${CODESPACE_VSCODE_FOLDER} #######"
+echo "###### CODESPACE_VSCODE_FOLDER: ${CODESPACE_VSCODE_FOLDER} #######"
+pwd
+ls -lai .
 ls -lai ${CODESPACE_VSCODE_FOLDER}
-cd ${CODESPACE_VSCODE_FOLDER}
-make prepare
+#cd ${CODESPACE_VSCODE_FOLDER}
+#make prepare
