@@ -11,7 +11,8 @@ FROM registry.opensuse.org/opensuse/tumbleweed:latest
 #RUN /run/install-dependency.sh
 
 RUN zypper dup -y \
-    zypper in -y os-autoinst-distri-opensuse-deps-worker perl-JSON-Validator gnu_parallel \
-    zypper in -y make git vim gcc-c++ libxml2-devel libssh2-devel libexpat-devel dbus-1-devel python311 python311-devel python311-yamllint python311-PyYAML perl-App-cpanminus perl-Code-TidyAll
+    && zypper in -y os-autoinst-distri-opensuse-deps-worker perl-JSON-Validator gnu_parallel \
+    && zypper in -y make git vim gcc-c++ libxml2-devel libssh2-devel libexpat-devel dbus-1-devel python311 python311-devel python311-yamllint python311-PyYAML perl-App-cpanminus perl-Code-TidyAll \
+    && echo "---------#########$(pwd)#########--------------"
     #cd ${CODESPACE_VSCODE_FOLDER}
     #make prepare
