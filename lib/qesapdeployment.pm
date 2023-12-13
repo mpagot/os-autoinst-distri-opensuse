@@ -97,6 +97,7 @@ our @EXPORT = qw(
   qesap_az_get_active_peerings
   qesap_az_clean_old_peerings
   qesap_az_setup_native_fencing_permissions
+  qesap_az_get_native_fencing_type
   qesap_az_enable_system_assigned_identity
   qesap_az_assign_role
   qesap_az_get_tenant_id
@@ -1864,6 +1865,22 @@ sub qesap_az_clean_old_peerings {
     }
 }
 
+=head2 qesap_az_get_native_fencing_type
+
+    qesap_az_get_native_fencing_type();
+
+    Gets the native fencing type (spn/msi)
+
+=cut
+
+sub qesap_az_get_native_fencing_type {
+    my $type = get_var('AZURE_FENCE_AGENT_CONFIGURATION', get_var('QESAP_AZURE_FENCE_AGENT_CONFIGURATION', 'msi'));
+    unless ($type eq 'msi' || $type eq 'spn') {
+        die "Invalid type: $type. Must be 'msi' or 'spn'.";
+    }
+    return $type;
+}
+
 =head2 qesap_az_setup_native_fencing_permissions
 
     qesap_az_setup_native_fencing_permissions(vmname=>$vm_name,
@@ -1912,10 +1929,14 @@ sub qesap_az_enable_system_assigned_identity {
         croak "Missing argument: '$_'" unless defined($args{$_});
     }
 
-    my $az_cmd = "az vm identity assign";
-    my $az_args = "--only-show-errors -g '$args{resource_group}' -n '$args{vm_name}' --query 'systemAssignedIdentity' -o tsv";
-    my $identity_id = script_output(join(' ', $az_cmd, $az_args));
-    croak 'Returned output does not match ID pattern' if qesap_az_validate_uuid_pattern($identity_id) eq 0;
+    my $identity_id = script_output(join(' ',
+            'az vm identity assign',
+            '--only-show-errors',
+            "-g '$args{resource_group}'",
+            "-n '$args{vm_name}'",
+            "--query 'systemAssignedIdentity'",
+            '-o tsv'));
+    die 'Returned output does not match ID pattern' if qesap_az_validate_uuid_pattern($identity_id) eq 0;
     return $identity_id;
 }
 
