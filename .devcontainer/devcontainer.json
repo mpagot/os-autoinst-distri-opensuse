@@ -4,6 +4,19 @@
   },
   "customizations": {
     "vscode": {
+      "settings": {
+        "perl.perlInc": [
+          "lib",
+          "os-autoinst",
+          "tests/installation",
+          "tests/x11",
+          "tests/qa_automation",
+          "tests/virt_autotest",
+          "tests/cpu_bugs",
+          "tests/sles4sap/saptune"
+          ],
+        "perl.logLevel": 2
+      },
       "extensions": [
         "streetsidesoftware.code-spell-checker",
         "richterger.perl",
@@ -13,5 +26,5 @@
       ]
     }
   },
-  "postCreateCommand": "make prepare",
+  "postCreateCommand": "sudo make prepare",
 }
