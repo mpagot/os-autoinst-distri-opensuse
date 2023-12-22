@@ -1,0 +1,29 @@
+{
+  "features": {
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "perl.perlInc": [
+          "lib",
+          "os-autoinst",
+          "tests/installation",
+          "tests/x11",
+          "tests/qa_automation",
+          "tests/virt_autotest",
+          "tests/cpu_bugs",
+          "tests/sles4sap/saptune"
+          ],
+        "perl.logLevel": 2
+      },
+      "extensions": [
+        "streetsidesoftware.code-spell-checker",
+        "richterger.perl",
+        "ms-python.python",
+        "sfodje.perltidy",
+        "ms-vscode.makefile-tools"
+      ]
+    }
+  },
+  "postCreateCommand": "./.devcontainer/ubuntu/install-dependencies.sh",
+}
