@@ -35,9 +35,9 @@ sub run {
     select_host_console();
     select_serial_terminal();
 
-    qesap_import_instances($test_id);
-
     my $provider = $self->provider_factory();
+    qesap_import_instances(test_id => $test_id, provider => $provider);
+
     my $instances = create_instance_data($provider);
     $self->{instances} = $run_args->{instances} = $instances;
 

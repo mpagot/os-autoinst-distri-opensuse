@@ -74,12 +74,6 @@ our @EXPORT = qw(
   qesap_cluster_log_cmds
   qesap_cluster_logs
   qesap_upload_crm_report
-  qesap_az_get_vnet
-  qesap_az_get_resource_group
-  qesap_az_calculate_address_range
-  qesap_az_vnet_peering
-  qesap_az_simple_peering_delete
-  qesap_az_vnet_peering_delete
   qesap_aws_get_region_subnets
   qesap_aws_get_vpc_id
   qesap_aws_create_transit_gateway_vpc_attachment
@@ -96,6 +90,12 @@ our @EXPORT = qw(
   qesap_import_instances
   qesap_file_find_string
   qesap_is_job_finished
+  qesap_az_get_vnet
+  qesap_az_get_resource_group
+  qesap_az_calculate_address_range
+  qesap_az_vnet_peering
+  qesap_az_simple_peering_delete
+  qesap_az_vnet_peering_delete
   qesap_az_get_active_peerings
   qesap_az_clean_old_peerings
   qesap_az_setup_native_fencing_permissions
@@ -105,6 +105,7 @@ our @EXPORT = qw(
   qesap_az_get_tenant_id
   qesap_az_validate_uuid_pattern
   qesap_az_create_sas_token
+  qesap_az_diagnostic_log
   qesap_terraform_clean_up_retry
   qesap_terrafom_ansible_deploy_retry
 );
@@ -510,10 +511,18 @@ sub qesap_get_inventory {
 =head3 qesap_get_nodes_number
 
 Get the number of cluster nodes from the inventory.yaml
+
+=over 1
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_get_nodes_number {
-    my $inventory = qesap_get_inventory(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'));
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
+    my $inventory = qesap_get_inventory(provider => $args{provider});
     my $yp = YAML::PP->new();
 
     my $inventory_content = script_output("cat $inventory");
@@ -528,10 +537,18 @@ sub qesap_get_nodes_number {
 =head3 qesap_get_nodes_names
 
 Get the cluster nodes' names from the inventory.yaml
+
+=over 1
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_get_nodes_names {
-    my $inventory = qesap_get_inventory(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'));
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
+    my $inventory = qesap_get_inventory(provider => $args{provider});
     my $yp = YAML::PP->new();
 
     my $inventory_content = script_output("cat $inventory");
@@ -972,10 +989,17 @@ sub qesap_create_aws_config {
     deployed by qe-sap-deployment, as reported by C<terraform output>.
     Needs to run after C<qesap_execute(cmd => 'terraform');> call.
 
+=over 1
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_remote_hana_public_ips {
-    my $tfdir = qesap_get_terraform_dir(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'));
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
+    my $tfdir = qesap_get_terraform_dir(provider => $args{provider});
     my $data = decode_json(script_output "terraform -chdir=$tfdir output -json");
     return @{$data->{hana_public_ip}->{value}};
 }
@@ -1062,9 +1086,16 @@ sub qesap_upload_crm_report {
 
   List of commands to collect logs from a deployed cluster
 
+=over 1
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_cluster_log_cmds {
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
     # many logs does not need to be in this list as collected with `crm report`.
     # Some of them that are there are: `crm status`, `crm configure show`,
     # `journalctl -b`, `systemctl status sbd`, `corosync.conf` and `csync2`
@@ -1086,13 +1117,13 @@ sub qesap_cluster_log_cmds {
             Output => 'hdblcm.log.txt',
         },
     );
-    if (check_var('PUBLIC_CLOUD_PROVIDER', 'EC2')) {
+    if ($args{provider} eq 'EC2') {
         push @log_list, {
             Cmd => 'cat ~/.aws/config > aws_config.txt',
             Output => 'aws_config.txt',
         };
     }
-    elsif (check_var('PUBLIC_CLOUD_PROVIDER', 'AZURE')) {
+    elsif ($args{provider} eq 'AZURE') {
         push @log_list, {
             Cmd => 'cat /var/log/cloud-init.log > azure_cloud_init_log.txt',
             Output => 'azure_cloud_init_log.txt',
@@ -1105,20 +1136,27 @@ sub qesap_cluster_log_cmds {
 
   Collect logs from a deployed cluster
 
+=over 1
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_cluster_logs {
-    my $provider = get_required_var('PUBLIC_CLOUD_PROVIDER');
-    my $inventory = qesap_get_inventory(provider => $provider);
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
+
+    my $inventory = qesap_get_inventory(provider => $args{provider});
     if (script_run("test -e $inventory") == 0)
     {
         foreach my $host ('hana[0]', 'hana[1]') {
-            foreach my $cmd (qesap_cluster_log_cmds()) {
+            foreach my $cmd (qesap_cluster_log_cmds($args{provider})) {
                 my $log_filename = "$host-$cmd->{Output}";
                 # remove square brackets
                 $log_filename =~ s/[\[\]"]//g;
                 my $out = qesap_ansible_script_output_file(cmd => $cmd->{Cmd},
-                    provider => $provider,
+                    provider => $args{provider},
                     host => $host,
                     failok => 1,
                     root => 1,
@@ -1128,32 +1166,16 @@ sub qesap_cluster_logs {
                 upload_logs($out, failok => 1);
             }
             # Upload crm report
-            qesap_upload_crm_report(host => $host, provider => $provider, failok => 1);
+            qesap_upload_crm_report(host => $host, provider => $args{provider}, failok => 1);
         }
     }
-}
-
-=head3 qesap_az_get_vnet
-
-Return the output of az network vnet list
-
-=over 1
-
-=item B<RESOURCE_GROUP> - resource group name to query
-
-=back
-=cut
-
-sub qesap_az_get_vnet {
-    my ($resource_group) = @_;
-    croak 'Missing mandatory resource_group argument' unless $resource_group;
-
-    my $cmd = join(' ', 'az network',
-        'vnet list',
-        '-g', $resource_group,
-        '--query "[0].name"',
-        '-o tsv');
-    return script_output($cmd, 180);
+    if ($args{provider} eq 'AZURE') {
+        my @diagnostic_logs = qesap_az_diagnostic_log();
+        foreach (@diagnostic_logs) {
+            push(@log_files, $_);
+            qesap_upload_logs();
+        }
+    }
 }
 
 =head3 qesap_calculate_deployment_name
@@ -1171,211 +1193,6 @@ sub qesap_calculate_deployment_name {
     my ($prefix) = @_;
     my $id = get_current_job_id();
     return $prefix ? $prefix . $id : $id;
-}
-
-=head3 qesap_az_get_resource_group
-
-Query and return the resource group used
-by the qe-sap-deployment
-
-=over 1
-
-=item B<SUBSTRING> - optional substring to be used with additional grep at the end of the command
-
-=back
-=cut
-
-sub qesap_az_get_resource_group {
-    my (%args) = @_;
-    my $substring = $args{substring} ? " | grep $args{substring}" : "";
-    my $job_id = get_var('QESAP_DEPLOYMENT_IMPORT', get_current_job_id());    # in case existing deployment is used
-    my $result = script_output("az group list --query \"[].name\" -o tsv | grep $job_id" . $substring, proceed_on_failure => 1);
-    record_info('QESAP RG', "result:$result");
-    return $result;
-}
-
-=head3 qesap_az_calculate_address_range
-
-Calculate the vnet and subnet address
-ranges. The format is 10.ip2.ip3.0/21 and
- /24 respectively. ip2 and ip3 are calculated
- using the slot number as seed.
-
-=over 1
-
-=item B<SLOT> - integer to be used as seed in calculating addresses
-
-=back
-
-=cut
-
-sub qesap_az_calculate_address_range {
-    my %args = @_;
-    croak 'Missing mandatory slot argument' unless $args{slot};
-    die "Invalid 'slot' argument - valid values are 1-8192" if ($args{slot} > 8192 || $args{slot} < 1);
-    my $offset = ($args{slot} - 1) * 8;
-
-    # addresses are of the form 10.ip2.ip3.0/21 and /24 respectively
-    #ip2 gets incremented when it is >=256
-    my $ip2 = int($offset / 256);
-    #ip3 gets incremented by 8 until it's >=256, then it resets
-    my $ip3 = $offset % 256;
-
-    return (
-        vnet_address_range => sprintf("10.%d.%d.0/21", $ip2, $ip3),
-        subnet_address_range => sprintf("10.%d.%d.0/24", $ip2, $ip3),
-    );
-}
-
-=head3 qesap_az_vnet_peering
-
-    Create a pair of network peering between
-    the two provided deployments.
-
-=over 3
-
-=item B<SOURCE_GROUP> - resource group of source
-
-=item B<TARGET_GROUP> - resource group of target
-
-=item B<TIMEOUT> - default is 5 mins
-
-=back
-=cut
-
-sub qesap_az_vnet_peering {
-    my (%args) = @_;
-    foreach (qw(source_group target_group)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
-    my $source_vnet = qesap_az_get_vnet($args{source_group});
-    my $target_vnet = qesap_az_get_vnet($args{target_group});
-    $args{timeout} //= bmwqemu::scale_timeout(300);
-
-    my $vnet_show_cmd = 'az network vnet show --query id --output tsv';
-
-    my $source_vnet_id = script_output("$vnet_show_cmd --resource-group $args{source_group} --name $source_vnet");
-    record_info("[M] source vnet ID: $source_vnet_id\n");
-
-    my $target_vnet_id = script_output("$vnet_show_cmd --resource-group $args{target_group} --name $target_vnet");
-    record_info("[M] target vnet ID: $target_vnet_id\n");
-
-    my $peering_name = "$source_vnet-$target_vnet";
-    my $peering_cmd = "az network vnet peering create --name $peering_name --allow-vnet-access --output table";
-
-    assert_script_run("$peering_cmd --resource-group $args{source_group} --vnet-name $source_vnet --remote-vnet $target_vnet_id", timeout => $args{timeout});
-    record_info('PEERING SUCCESS (source)', "[M] Peering from $args{source_group}.$source_vnet server was successful\n");
-
-    assert_script_run("$peering_cmd --resource-group $args{target_group} --vnet-name $target_vnet --remote-vnet $source_vnet_id", timeout => $args{timeout});
-    record_info('PEERING SUCCESS (target)', "[M] Peering from $args{target_group}.$target_vnet server was successful\n");
-
-    record_info('Checking peering status');
-    assert_script_run("az network vnet peering show --name $peering_name --resource-group $args{target_group} --vnet-name $target_vnet --output table");
-    record_info('AZURE PEERING SUCCESS');
-}
-
-=head3 qesap_az_simple_peering_delete
-
-    Delete a single peering one way
-
-=over 4
-
-=item B<RG> - Name of the resource group
-
-=item B<VNET_NAME> - Name of the vnet
-
-=item B<PEERING_NAME> - Name of the peering
-
-=item B<TIMEOUT> - (Optional) Timeout for the script_run command
-
-=back
-=cut
-
-sub qesap_az_simple_peering_delete {
-    my (%args) = @_;
-    foreach (qw(rg vnet_name peering_name)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
-    $args{timeout} //= bmwqemu::scale_timeout(300);
-    my $peering_cmd = "az network vnet peering delete -n $args{peering_name} --resource-group $args{rg} --vnet-name $args{vnet_name}";
-    return script_run($peering_cmd, timeout => $args{timeout});
-}
-
-=head3 qesap_az_vnet_peering_delete
-
-    Delete all the network peering between the two provided deployments.
-
-=over 3
-
-=item B<SOURCE_GROUP> - resource group of source.
-                        This parameter is optional, if not provided
-                        the related peering will be ignored.
-
-=item B<TARGET_GROUP> - resource group of target.
-                        This parameter is mandatory and
-                        the associated resource group is supposed to still exist.
-
-=item B<TIMEOUT> - default is 5 mins
-
-=back
-=cut
-
-sub qesap_az_vnet_peering_delete {
-    my (%args) = @_;
-    croak 'Missing mandatory target_group argument' unless $args{target_group};
-    $args{timeout} //= bmwqemu::scale_timeout(300);
-
-    my $target_vnet = qesap_az_get_vnet($args{target_group});
-
-    my $peering_name = qesap_az_get_peering_name(resource_group => $args{target_group});
-    if (!$peering_name) {
-        record_info('NO PEERING', "No peering between $args{target_group} and resources belonging to the current job to be destroyed!");
-        return;
-    }
-
-    record_info('Attempting peering destruction');
-    my $source_ret = 0;
-    record_info('Destroying job_resources->IBSM peering');
-    if ($args{source_group}) {
-        my $source_vnet = qesap_az_get_vnet($args{source_group});
-        $source_ret = qesap_az_simple_peering_delete(rg => $args{source_group}, vnet_name => $source_vnet, peering_name => $peering_name, timeout => $args{timeout});
-    }
-    else {
-        record_info('NO PEERING', "No peering between job VMs and IBSM - maybe it wasn't created, or the resources have been destroyed.");
-    }
-    record_info('Destroying IBSM -> job_resources peering');
-    my $target_ret = qesap_az_simple_peering_delete(rg => $args{target_group}, vnet_name => $target_vnet, peering_name => $peering_name, timeout => $args{timeout});
-
-    if ($source_ret == 0 && $target_ret == 0) {
-        record_info('Peering deletion SUCCESS', 'The peering was successfully destroyed');
-        return;
-    }
-    record_soft_failure("Peering destruction FAIL: There may be leftover peering connections, please check - jsc#7487");
-}
-
-=head3 qesap_az_get_peering_name
-
-    Search for all network peering related to both:
-     - resource group related to the current job
-     - the provided resource group.
-    Returns the peering name or
-    empty string if a peering doesn't exist
-
-=over 1
-
-=item B<RESOURCE_GROUP> - resource group connected to the peering
-
-=back
-=cut
-
-sub qesap_az_get_peering_name {
-    my (%args) = @_;
-    croak 'Missing mandatory target_group argument' unless $args{resource_group};
-
-    my $job_id = get_current_job_id();
-    my $cmd = join(' ', 'az network vnet peering list',
-        '-g', $args{resource_group},
-        '--vnet-name', qesap_az_get_vnet($args{resource_group}),
-        '--query "[].name"',
-        '-o tsv',
-        '| grep', $job_id);
-    return script_output($cmd, proceed_on_failure => 1);
 }
 
 =head3 qesap_aws_get_region_subnets
@@ -1744,51 +1561,55 @@ sub qesap_aws_vnet_peering {
 
     Adds a 'ip -> name' pair in the end of /etc/hosts in the hosts
 
-=over 2
+=over 3
 
 =item B<IP> - ip of server to add to hosts
 
 =item B<NAME> - name of server to add to hosts
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
 
 =back
 =cut
 
 sub qesap_add_server_to_hosts {
     my (%args) = @_;
-    foreach (qw(ip name)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
+    foreach (qw(ip name provider)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
 
-    my $provider = get_required_var('PUBLIC_CLOUD_PROVIDER');
     qesap_ansible_cmd(cmd => "sed -i '\\\$a $args{ip} $args{name}' /etc/hosts",
-        provider => $provider,
+        provider => $args{provider},
         host_keys_check => 1,
         verbose => 1);
     qesap_ansible_cmd(cmd => "cat /etc/hosts",
-        provider => $provider,
+        provider => $args{provider},
         verbose => 1);
 }
 
 =head3 qesap_import_instances
 
     Downloads assets required for re-using infrastructure from previously exported test.
-    qesap_import_instances(<$test_id>)
+    qesap_import_instances(test_id => <$test_id>, provider => get_required_var('PUBLIC_CLOUD_PROVIDER'))
 
-=over 1
+=over 2
 
-=item B<$test_id> - OpenQA test ID from a test previously run with "QESAP_DEPLOYMENT_IMPORT=1" and infrastructure still being up and running
+=item B<TEST_ID> - OpenQA test ID from a test previously run with "QESAP_DEPLOYMENT_IMPORT=1" and infrastructure still being up and running
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
 
 =back
 =cut
 
 sub qesap_import_instances {
-    my ($test_id) = @_;
-    die("OpenQA test ID must be a number. Parameter 'QESAP_DEPLOYMENT_IMPORT' must contain ID of previously exported test")
-      unless looks_like_number($test_id);
+    my (%args) = @_;
+    foreach (qw(test_id provider)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
+    croak "OpenQA test ID must be a number. Parameter 'QESAP_DEPLOYMENT_IMPORT' must contain ID of previously exported test"
+      unless looks_like_number($args{test_id});
 
-    my $inventory_file = qesap_get_inventory(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'));
+    my $inventory_file = qesap_get_inventory(provider => $args{provider});
     my %files = ('id_rsa' => '/root/.ssh/',
         'id_rsa.pub' => '/root/.ssh/',
         basename($inventory_file) => dirname($inventory_file) . '/');
-    my $test_url = join('', 'http://', get_required_var('OPENQA_URL'), '/tests/', $test_id);
+    my $test_url = join('', 'http://', get_required_var('OPENQA_URL'), '/tests/', $args{test_id});
 
     assert_script_run('mkdir -m700 /root/.ssh');
     assert_script_run('mkdir -p ' . dirname($inventory_file));
@@ -1804,13 +1625,20 @@ sub qesap_import_instances {
 =head3 qesap_export_instances
 
     Downloads assets required for re-using infrastructure from previously exported test.
-    qesap_export_instances()
+    qesap_export_instances(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'))
 
+=over 1
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_export_instances {
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
     my @upload_files = (
-        qesap_get_inventory(provider => get_required_var('PUBLIC_CLOUD_PROVIDER')),
+        qesap_get_inventory(provider => $args{provider}),
         '/root/.ssh/id_rsa',
         '/root/.ssh/id_rsa.pub');
 
@@ -1846,6 +1674,233 @@ sub qesap_is_job_finished {
     return ($job_state ne 'running');
 }
 
+=head3 qesap_az_get_vnet
+
+Return the output of az network vnet list
+
+=over 1
+
+=item B<RESOURCE_GROUP> - resource group name to query
+
+=back
+=cut
+
+sub qesap_az_get_vnet {
+    my ($resource_group) = @_;
+    croak 'Missing mandatory resource_group argument' unless $resource_group;
+
+    my $cmd = join(' ', 'az network',
+        'vnet list',
+        '-g', $resource_group,
+        '--query "[0].name"',
+        '-o tsv');
+    return script_output($cmd, 180);
+}
+
+=head3 qesap_az_get_resource_group
+
+Query and return the resource group used
+by the qe-sap-deployment
+
+=over 1
+
+=item B<SUBSTRING> - optional substring to be used with additional grep at the end of the command
+
+=back
+=cut
+
+sub qesap_az_get_resource_group {
+    my (%args) = @_;
+    my $substring = $args{substring} ? " | grep $args{substring}" : "";
+    my $job_id = get_var('QESAP_DEPLOYMENT_IMPORT', get_current_job_id());    # in case existing deployment is used
+    my $result = script_output("az group list --query \"[].name\" -o tsv | grep $job_id" . $substring, proceed_on_failure => 1);
+    record_info('QESAP RG', "result:$result");
+    return $result;
+}
+
+=head3 qesap_az_calculate_address_range
+
+Calculate the vnet and subnet address
+ranges. The format is 10.ip2.ip3.0/21 and
+ /24 respectively. ip2 and ip3 are calculated
+ using the slot number as seed.
+
+=over 1
+
+=item B<SLOT> - integer to be used as seed in calculating addresses
+
+=back
+
+=cut
+
+sub qesap_az_calculate_address_range {
+    my %args = @_;
+    croak 'Missing mandatory slot argument' unless $args{slot};
+    die "Invalid 'slot' argument - valid values are 1-8192" if ($args{slot} > 8192 || $args{slot} < 1);
+    my $offset = ($args{slot} - 1) * 8;
+
+    # addresses are of the form 10.ip2.ip3.0/21 and /24 respectively
+    #ip2 gets incremented when it is >=256
+    my $ip2 = int($offset / 256);
+    #ip3 gets incremented by 8 until it's >=256, then it resets
+    my $ip3 = $offset % 256;
+
+    return (
+        vnet_address_range => sprintf("10.%d.%d.0/21", $ip2, $ip3),
+        subnet_address_range => sprintf("10.%d.%d.0/24", $ip2, $ip3),
+    );
+}
+
+=head3 qesap_az_vnet_peering
+
+    Create a pair of network peering between
+    the two provided deployments.
+
+=over 3
+
+=item B<SOURCE_GROUP> - resource group of source
+
+=item B<TARGET_GROUP> - resource group of target
+
+=item B<TIMEOUT> - default is 5 mins
+
+=back
+=cut
+
+sub qesap_az_vnet_peering {
+    my (%args) = @_;
+    foreach (qw(source_group target_group)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
+    my $source_vnet = qesap_az_get_vnet($args{source_group});
+    my $target_vnet = qesap_az_get_vnet($args{target_group});
+    $args{timeout} //= bmwqemu::scale_timeout(300);
+
+    my $vnet_show_cmd = 'az network vnet show --query id --output tsv';
+
+    my $source_vnet_id = script_output("$vnet_show_cmd --resource-group $args{source_group} --name $source_vnet");
+    record_info("[M] source vnet ID: $source_vnet_id\n");
+
+    my $target_vnet_id = script_output("$vnet_show_cmd --resource-group $args{target_group} --name $target_vnet");
+    record_info("[M] target vnet ID: $target_vnet_id\n");
+
+    my $peering_name = "$source_vnet-$target_vnet";
+    my $peering_cmd = "az network vnet peering create --name $peering_name --allow-vnet-access --output table";
+
+    assert_script_run("$peering_cmd --resource-group $args{source_group} --vnet-name $source_vnet --remote-vnet $target_vnet_id", timeout => $args{timeout});
+    record_info('PEERING SUCCESS (source)', "[M] Peering from $args{source_group}.$source_vnet server was successful\n");
+
+    assert_script_run("$peering_cmd --resource-group $args{target_group} --vnet-name $target_vnet --remote-vnet $source_vnet_id", timeout => $args{timeout});
+    record_info('PEERING SUCCESS (target)', "[M] Peering from $args{target_group}.$target_vnet server was successful\n");
+
+    record_info('Checking peering status');
+    assert_script_run("az network vnet peering show --name $peering_name --resource-group $args{target_group} --vnet-name $target_vnet --output table");
+    record_info('AZURE PEERING SUCCESS');
+}
+
+=head3 qesap_az_simple_peering_delete
+
+    Delete a single peering one way
+
+=over 4
+
+=item B<RG> - Name of the resource group
+
+=item B<VNET_NAME> - Name of the vnet
+
+=item B<PEERING_NAME> - Name of the peering
+
+=item B<TIMEOUT> - (Optional) Timeout for the script_run command
+
+=back
+=cut
+
+sub qesap_az_simple_peering_delete {
+    my (%args) = @_;
+    foreach (qw(rg vnet_name peering_name)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
+    $args{timeout} //= bmwqemu::scale_timeout(300);
+    my $peering_cmd = "az network vnet peering delete -n $args{peering_name} --resource-group $args{rg} --vnet-name $args{vnet_name}";
+    return script_run($peering_cmd, timeout => $args{timeout});
+}
+
+=head3 qesap_az_vnet_peering_delete
+
+    Delete all the network peering between the two provided deployments.
+
+=over 3
+
+=item B<SOURCE_GROUP> - resource group of source.
+                        This parameter is optional, if not provided
+                        the related peering will be ignored.
+
+=item B<TARGET_GROUP> - resource group of target.
+                        This parameter is mandatory and
+                        the associated resource group is supposed to still exist.
+
+=item B<TIMEOUT> - default is 5 mins
+
+=back
+=cut
+
+sub qesap_az_vnet_peering_delete {
+    my (%args) = @_;
+    croak 'Missing mandatory target_group argument' unless $args{target_group};
+    $args{timeout} //= bmwqemu::scale_timeout(300);
+
+    my $target_vnet = qesap_az_get_vnet($args{target_group});
+
+    my $peering_name = qesap_az_get_peering_name(resource_group => $args{target_group});
+    if (!$peering_name) {
+        record_info('NO PEERING', "No peering between $args{target_group} and resources belonging to the current job to be destroyed!");
+        return;
+    }
+
+    record_info('Attempting peering destruction');
+    my $source_ret = 0;
+    record_info('Destroying job_resources->IBSM peering');
+    if ($args{source_group}) {
+        my $source_vnet = qesap_az_get_vnet($args{source_group});
+        $source_ret = qesap_az_simple_peering_delete(rg => $args{source_group}, vnet_name => $source_vnet, peering_name => $peering_name, timeout => $args{timeout});
+    }
+    else {
+        record_info('NO PEERING', "No peering between job VMs and IBSM - maybe it wasn't created, or the resources have been destroyed.");
+    }
+    record_info('Destroying IBSM -> job_resources peering');
+    my $target_ret = qesap_az_simple_peering_delete(rg => $args{target_group}, vnet_name => $target_vnet, peering_name => $peering_name, timeout => $args{timeout});
+
+    if ($source_ret == 0 && $target_ret == 0) {
+        record_info('Peering deletion SUCCESS', 'The peering was successfully destroyed');
+        return;
+    }
+    record_soft_failure("Peering destruction FAIL: There may be leftover peering connections, please check - jsc#7487");
+}
+
+=head3 qesap_az_get_peering_name
+
+    Search for all network peering related to both:
+     - resource group related to the current job
+     - the provided resource group.
+    Returns the peering name or
+    empty string if a peering doesn't exist
+
+=over 1
+
+=item B<RESOURCE_GROUP> - resource group connected to the peering
+
+=back
+=cut
+
+sub qesap_az_get_peering_name {
+    my (%args) = @_;
+    croak 'Missing mandatory target_group argument' unless $args{resource_group};
+
+    my $job_id = get_current_job_id();
+    my $cmd = join(' ', 'az network vnet peering list',
+        '-g', $args{resource_group},
+        '--vnet-name', qesap_az_get_vnet($args{resource_group}),
+        '--query "[].name"',
+        '-o tsv',
+        '| grep', $job_id);
+    return script_output($cmd, proceed_on_failure => 1);
+}
 
 =head3 qesap_az_get_active_peerings
 
@@ -2095,6 +2150,30 @@ sub qesap_az_create_sas_token {
     return script_output($cmd);
 }
 
+=head2 qesap_az_diagnostic_log
+
+Call `az vm boot-diagnostics json` for each running VM in the
+resource group associated to this openQA job
+
+Return a list of diagnostic file paths on the JumpHost
+=cut
+
+sub qesap_az_diagnostic_log {
+    my @diagnostic_log_files;
+    my $rg = qesap_az_get_resource_group();
+    my $az_list_vm_cmd = "az vm list --resource-group $rg --query '[].{id:id,name:name}' -o json";
+    my $vm_data = decode_json(script_output($az_list_vm_cmd));
+    my $az_get_logs_cmd = 'az vm boot-diagnostics get-boot-log --ids';
+    foreach (@{$vm_data}) {
+        record_info('az vm boot-diagnostics json', "id: $_->{id} name: $_->{name}");
+        my $boot_diagnostics_log = '/tmp/boot-diagnostics_' . $_->{name} . '.txt';
+        script_run(join(' ', $az_get_logs_cmd, $_->{id}, '|&', 'tee', $boot_diagnostics_log));
+        push(@diagnostic_log_files, $boot_diagnostics_log);
+
+    }
+    return @diagnostic_log_files;
+}
+
 =head2 qesap_terraform_clean_up_retry
 
     qesap_terraform_clean_up_retry()
@@ -2136,38 +2215,39 @@ sub qesap_terraform_clean_up_retry {
     Return 0: we manage the failure properly
     Return 1: something went wrong or we do not know what to do with the failure
 
+=over 2
+
+=item B<ERROR_LOG> - error log filename
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
 =cut
 
 sub qesap_terrafom_ansible_deploy_retry {
     my (%args) = @_;
-    croak 'Missing mandatory error_log argument' unless $args{error_log};
+    foreach (qw(error_log provider)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
     my @ret;
 
     if (qesap_file_find_string(file => $args{error_log}, search_string => 'Missing sudo password')) {
-        record_info('DETECTED ANSIBLE MISSING SUDO PASSWORD ERROR');
+        record_info('DETECTED ANSIBLE ERROR', 'MISSING SUDO PASSWORD');
         @ret = qesap_execute(cmd => 'ansible',
             logname => 'qesap_ansible_retry.log.txt',
             timeout => 3600);
         if ($ret[0])
         {
-            qesap_cluster_logs();
+            qesap_cluster_logs(provider => $args{provider});
             die "'qesap.py ansible' return: $ret[0]";
         }
         record_info('ANSIBLE RETRY PASS');
     }
     elsif (qesap_file_find_string(file => $args{error_log}, search_string => 'Timed out waiting for last boot time check')) {
-        record_info('DETECTED ANSIBLE TIMEOUT ERROR');
+        record_info('DETECTED ANSIBLE ERROR', 'REBOOT TIMEOUT');
 
-        if (check_var('PUBLIC_CLOUD_PROVIDER', 'AZURE')) {
-            my $rg = qesap_az_get_resource_group();
-            my $az_list_vm_cmd = "az vm list --resource-group $rg --query '[].{id:id,name:name}' -o json";
-            my $vm_data = decode_json(script_output($az_list_vm_cmd));
-            my $az_get_logs_cmd = 'az vm boot-diagnostics get-boot-log --ids';
-            foreach (@{$vm_data}) {
-                record_info('az vm boot-diagnostics json', "id: $_->{id} name: $_->{name}");
-                my $boot_diagnostics_log = '/tmp/boot-diagnostics_' . $_->{name} . '.txt';
-                script_run(join(' ', $az_get_logs_cmd, $_->{id}, '|& tee -a', $boot_diagnostics_log));
-                push(@log_files, $boot_diagnostics_log);
+        if ($args{provider} eq 'AZURE') {
+            my @diagnostic_logs = qesap_az_diagnostic_log();
+            foreach (@diagnostic_logs) {
+                push(@log_files, $_);
                 qesap_upload_logs();
             }
         }
@@ -2188,13 +2268,13 @@ sub qesap_terrafom_ansible_deploy_retry {
             timeout => 3600
         );
         if ($ret[0]) {
-            qesap_cluster_logs();
+            qesap_cluster_logs(provider => $args{provider});
             die "'qesap.py ansible' return: $ret[0]";
         }
         record_info('ANSIBLE RETRY PASS');
     }
     else {
-        qesap_cluster_logs();
+        qesap_cluster_logs(provider => $args{provider});
         return 1;
     }
     return 0;

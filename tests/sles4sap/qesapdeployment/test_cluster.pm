@@ -52,14 +52,17 @@ sub run {
     }
 
     qesap_ansible_cmd(cmd => $crm_mon_cmd, provider => $provider_setting, filter => '"hana[0]"');
-    qesap_cluster_logs();
+    qesap_cluster_logs(provider => $provider_setting);
 
     if ($provider_setting eq 'AZURE') {
         if (get_var("QESAPDEPLOY_IBSMIRROR_RESOURCE_GROUP")) {
             my $rg = qesap_az_get_resource_group();
             my $ibs_mirror_rg = get_var('QESAPDEPLOY_IBSMIRROR_RESOURCE_GROUP');
             qesap_az_vnet_peering(source_group => $rg, target_group => $ibs_mirror_rg);
-            qesap_add_server_to_hosts(name => 'download.suse.de', ip => get_required_var("QESAPDEPLOY_IBSMIRROR_IP"));
+            qesap_add_server_to_hosts(
+                name => 'download.suse.de',
+                ip => get_required_var("QESAPDEPLOY_IBSMIRROR_IP"),
+                provider => $provider_setting);
             qesap_az_vnet_peering_delete(source_group => $rg, target_group => $ibs_mirror_rg);
         }
     }
@@ -69,7 +72,10 @@ sub run {
             my $vpc_id = qesap_aws_get_vpc_id(resource_group => $deployment_name);
             my $ibs_mirror_target_ip = get_var('QESAPDEPLOY_IBSMIRROR_IP_RANGE');    # '10.254.254.240/28'
             die 'Error in network peering setup.' if !qesap_aws_vnet_peering(target_ip => $ibs_mirror_target_ip, vpc_id => $vpc_id);
-            qesap_add_server_to_hosts(name => 'download.suse.de', ip => get_required_var("QESAPDEPLOY_IBSMIRROR_IP"));
+            qesap_add_server_to_hosts(
+                name => 'download.suse.de',
+                ip => get_required_var("QESAPDEPLOY_IBSMIRROR_IP"),
+                provider => $provider_setting);
             die 'Error in network peering delete.' if !qesap_aws_delete_transit_gateway_vpc_attachment(name => $deployment_name . '*');
         }
     }
@@ -77,16 +83,17 @@ sub run {
 
 sub post_fail_hook {
     my ($self) = shift;
-    qesap_cluster_logs();
+    my $provider_setting = get_required_var('PUBLIC_CLOUD_PROVIDER');
+    qesap_cluster_logs(provider => $provider_setting);
     qesap_upload_logs();
-    if (check_var('PUBLIC_CLOUD_PROVIDER', 'AZURE')) {
+    if ($provider_setting eq 'AZURE') {
         if (get_var("QESAPDEPLOY_IBSMIRROR_RESOURCE_GROUP")) {
             my $rg = qesap_az_get_resource_group();
             my $ibs_mirror_rg = get_required_var('QESAPDEPLOY_IBSMIRROR_RESOURCE_GROUP');
             qesap_az_vnet_peering_delete(source_group => $rg, target_group => $ibs_mirror_rg);
         }
     }
-    elsif (check_var('PUBLIC_CLOUD_PROVIDER', 'EC2')) {
+    elsif ($provider_setting eq 'EC2') {
         if (get_var("QESAPDEPLOY_IBSMIRROR_IP_RANGE")) {
             qesap_aws_delete_transit_gateway_vpc_attachment(name => qesap_calculate_deployment_name('qesapval') . '*');
         }

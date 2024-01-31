@@ -63,7 +63,7 @@ sub post_fail_hook {
         diag('Skip post fail', "Variable 'QESAP_NO_CLEANUP_ON_FAILURE' defined.");
         return;
     }
-    qesap_cluster_logs();
+    qesap_cluster_logs(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'));
     $self->cleanup();
 }
 
