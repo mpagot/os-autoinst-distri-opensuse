@@ -66,7 +66,7 @@ sub run {
     my $release = script_output "cat /etc/os-release";
 
     foreach my $key (keys %checker) {
-        record_info $key, "Checking $key in /etc/os-release";
+        record_info $key, "Checking $key in /etc/os-release against checker:". $checker{$key};
         my $regexp = "$key=\"?$checker{$key}\"?";
         if ($release !~ m|$regexp|) {
             record_info "Wrong $key value", "Wrong $key value in /etc/os-release. Expected $checker{$key}", result => 'fail';

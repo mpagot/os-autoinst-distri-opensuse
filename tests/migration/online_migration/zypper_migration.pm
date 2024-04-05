@@ -176,6 +176,7 @@ sub post_fail_hook {
     select_serial_terminal;
     script_run("pkill zypper");
     upload_logs '/var/log/zypper.log';
+    upload_logs '/etc/os-release';
     upload_solvertestcase_logs();
     $self->SUPER::post_fail_hook;
 }
