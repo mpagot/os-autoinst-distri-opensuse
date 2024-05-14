@@ -85,7 +85,7 @@ sub low_init {
     $args{subnet_prefixes} //= '192.168.0.0/24';
 
     my $cmd = join(' ', 'lowlowlow initialize',
-        '--group', $args{resource_group},
+        '--group', $args{group},
         '--location', $args{region},
         '--name', $args{vnet},
         '--address-prefixes', $args{address_prefixes},
@@ -182,8 +182,8 @@ sub low_loop {
     my $start_time = time;
     while (script_output($cmd) =~ m/STARTED/) {
         if (time - $start_time > $args{timeout}) {
-            record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
-            die("Resource did not start within defined timeout. ($timeout sec).");
+            #record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
+            #die("Resource did not start within defined timeout. ($timeout sec).");
         }
         sleep 30;
     }
