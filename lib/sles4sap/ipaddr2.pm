@@ -58,6 +58,7 @@ our $nat_pub_ip = DEPLOY_PREFIX . '-nat_pub_ip';
 our $storage_account = DEPLOY_PREFIX . 'storageaccount';
 our $priv_ip_range = '192.168.';
 our $frontend_ip = $priv_ip_range . '0.50';
+our $ping_cmd = 'ping -c 3';
 our $key_id = 'id_rsa';
 our @nginx_cmds = (
     'sudo zypper install -y nginx',
@@ -684,8 +685,8 @@ sub ipaddr2_os_sanity {
     my (%args) = @_;
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
 
-    ipaddr2_os_connectivity_sanity(bastion_ip => $args{bastion_ip});
     ipaddr2_os_network_sanity(bastion_ip => $args{bastion_ip});
+    ipaddr2_os_connectivity_sanity(bastion_ip => $args{bastion_ip});
     ipaddr2_os_ssh_sanity(bastion_ip => $args{bastion_ip});
 
     foreach (1 .. 2) {
@@ -766,7 +767,6 @@ die in case of failure
 sub ipaddr2_os_connectivity_sanity {
     my (%args) = @_;
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
-    my $ping_cmd = 'ping -c 3';
 
     # proceed_on_failure needed as ping or nc
     # could be missing on the qcow2 running these commands
@@ -794,6 +794,7 @@ sub ipaddr2_os_connectivity_sanity {
             bastion_ip => $args{bastion_ip});
     }
 
+    # Check if the two internal VM can ping one to each other
     ipaddr2_ssh_internal(
         id => 1,
         cmd => join(' ', $ping_cmd, ipaddr2_get_internal_vm_private_ip(id => 2)),
@@ -801,7 +802,7 @@ sub ipaddr2_os_connectivity_sanity {
 
     ipaddr2_ssh_internal(
         id => 2,
-        cmd => 'ping -c 3 ' . ipaddr2_get_internal_vm_private_ip(id => 1),
+        cmd => join(' ', $ping_cmd, ipaddr2_get_internal_vm_private_ip(id => 1)),
         bastion_ip => $args{bastion_ip});
 }
 
@@ -1632,6 +1633,10 @@ sub ipaddr2_test_master_vm {
         cmd => 'ip a show eth0',
         bastion_ip => $args{bastion_ip});
     die "VirtualIP $frontend_ip should be on $vm" unless ($res =~ m/$frontend_ip/);
-}
+    # Check if the master internal VM can ping the virtual IP
+    ipaddr2_ssh_internal(
+        id => $args{id},
+        cmd => join(' ', $ping_cmd, $frontend_ip),
+        bastion_ip => $args{bastion_ip}); }
 
 1;
