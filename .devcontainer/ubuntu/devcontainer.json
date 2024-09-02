@@ -21,7 +21,8 @@
         "richterger.perl",
         "ms-python.python",
         "sfodje.perltidy",
-        "ms-vscode.makefile-tools"
+        "ms-vscode.makefile-tools",
+        "bscan.perlnavigator"
       ]
     }
   },
