@@ -58,7 +58,6 @@ sub run {
             ipaddr2_configure_web_server(bastion_ip => $bastion_ip, id => $_);
         }
     } else {
-
         foreach (1 .. 2) {
             ipaddr2_refresh_repo(
                 bastion_ip => $bastion_ip,

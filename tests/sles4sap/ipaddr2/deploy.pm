@@ -20,6 +20,9 @@ use sles4sap::ipaddr2 qw(
 sub run {
     my ($self) = @_;
 
+    my $iptl = check_var('IPADDR2_TRUSTEDLAUNCH', 0);
+    die("1 iptl:$iptl  trusted_launch: $deployment{trusted_launch}");
+
     die('Azure is the only CSP supported for the moment')
       unless check_var('PUBLIC_CLOUD_PROVIDER', 'AZURE');
 
@@ -39,7 +42,12 @@ sub run {
         diagnostic => get_var('IPADDR2_DIAGNOSTIC', 0),
         cloudinit => get_var('IPADDR2_CLOUDINIT', 1));
     $deployment{scc_code} = get_var('SCC_REGCODE_SLES4SAP') if (get_var('SCC_REGCODE_SLES4SAP'));
+    $deployment{trusted_launch} = 0 if (check_var('IPADDR2_TRUSTEDLAUNCH', 0));
+
+    $iptl = check_var('IPADDR2_TRUSTEDLAUNCH', 0);
+    die("2 iptl:$iptl  trusted_launch: $deployment{trusted_launch}");
     ipaddr2_azure_deployment(%deployment);
+
     ipaddr2_deployment_sanity();
 }
 
