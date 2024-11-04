@@ -115,8 +115,10 @@ sub run_cmd {
     delete($args{timeout});
     delete($args{runas});
 
-    $self->{my_instance}->wait_for_ssh(timeout => $timeout, scan_ssh_host_key => 1);
+    set_var('_QUIET_SCRIPT_CALLS', 1);
+    $self->{my_instance}->wait_for_ssh(timeout => $timeout);
     my $out = $self->{my_instance}->run_ssh_command(cmd => "sudo $cmd", timeout => $timeout, %args);
+    set_var('_QUIET_SCRIPT_CALLS', undef);
     record_info("$title output - $self->{my_instance}->{instance_id}", $out) unless ($timeout == 0 or $args{quiet} or $args{rc_only});
     return $out;
 }
@@ -335,13 +337,13 @@ sub wait_hana_node_up {
     $args{timeout} //= 900;
     my $start_time = time();
     my $out;
+    record_info("WAIT_FOR_SYSTEM", "Start at $start_time");
     while ((time() - $start_time) < $args{timeout}) {
         $out = $instance->run_ssh_command(
             cmd => "sudo systemctl is-system-running",
             timeout => 5,
             proceed_on_failure => 1);
         return if ($out =~ m/running/);
-        record_info("WAIT_FOR_SYSTEM", "System state: $out");
         sleep 10;
     }
     die "Timeout reached. is_system_running returns \"$out\"";
