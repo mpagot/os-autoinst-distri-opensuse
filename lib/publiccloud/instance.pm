@@ -76,6 +76,8 @@ sub run_ssh_command {
         $cmd = "'$cmd'";
     }
 
+    my $ssh_cmd_showconfig = sprintf('ssh %s "%s@%s" -G', $args{ssh_opts}, $args{username}, $self->public_ip);
+    script_run($ssh_cmd_showconfig);
     my $ssh_cmd = sprintf('ssh %s "%s@%s" -- %s', $args{ssh_opts}, $args{username}, $self->public_ip, $cmd);
     $ssh_cmd = "timeout $timeout $ssh_cmd" if ($timeout > 0);
     record_info('SSH CMD', $ssh_cmd);
