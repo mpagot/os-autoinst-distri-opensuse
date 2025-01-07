@@ -30,6 +30,17 @@ Hosts/vmhana02/vhost="BBBBBBB"');
     ok((any { qr/vmhana02/ } keys %$topology), 'External hash has key vmhana02');
 };
 
+subtest '[calculate_hana_topology] minimal 2 nodes angi' => sub {
+    my $saputils = Test::MockModule->new('saputils', no_auto => 1);
+    $saputils->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
+    my $topology = calculate_hana_topology(input => '0 Global/global/sid="HA0"
+0 Host/vmhana01/vhost="AAAAAAAA"
+0 Host/vmhana01/vhost="BBBBBBBB"');
+    ok keys %$topology == 2, 'Output is about exactly 2 hosts';
+    ok((any { qr/vmhana01/ } keys %$topology), 'External hash has key vmhana01');
+    ok((any { qr/vmhana02/ } keys %$topology), 'External hash has key vmhana02');
+};
+
 subtest '[calculate_hana_topology] internal keys' => sub {
     my $saputils = Test::MockModule->new('saputils', no_auto => 1);
     $saputils->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
@@ -72,6 +83,37 @@ Hosts/vmhana02/remoteHost="vmhana01"
 Hosts/vmhana02/node_state="online"
 Hosts/vmhana02/sync_state="SOK"
 Hosts/vmhana02/vhost="vmhana02"');
+
+    my $topology_ready = check_hana_topology(input => $topology);
+
+    ok(($topology_ready == 1), 'healthy cluster leads to the return of 1');
+};
+
+subtest '[check_hana_topology] healthy angi cluster' => sub {
+    my $saputils = Test::MockModule->new('saputils', no_auto => 1);
+    $saputils->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
+
+    my $topology = calculate_hana_topology(input => '0 Global/global/sid="HA0"
+0 Global/global/sec="site_b"
+0 Global/global/topology="ScaleUp"
+0 Global/global/prim="site_a"
+0 Global/global/cib-update="0.82.0"
+0 Global/global/dcid="1"
+0 Resource/mst_SAPHanaCtl_HA0_HDB00/maintenance="false"
+0 Host/vmhana01/vhost="vmhana01"
+0 Host/vmhana01/site="site_a"
+0 Host/vmhana01/version="2.00.077.00"
+0 Host/vmhana01/srah="-"
+0 Host/vmhana01/clone_state="PROMOTED"
+0 Host/vmhana01/score="150"
+0 Host/vmhana01/roles="master1:master:worker:master"
+0 Host/vmhana02/vhost="vmhana02"
+0 Host/vmhana02/site="site_b"
+0 Host/vmhana02/version="2.00.077.00"
+0 Host/vmhana02/srah="-"
+0 Host/vmhana02/clone_state="DEMOTED"
+0 Host/vmhana02/score="100"
+0 Host/vmhana02/roles="master1:master:worker:master"');
 
     my $topology_ready = check_hana_topology(input => $topology);
 
