@@ -115,10 +115,11 @@ sub registercloudguest {
     my $cmd_time = time();
 
     # Check what version of registercloudguest binary we use
-    my $version = $instance->ssh_script_output(cmd => "rpm -qa cloud-regionsrv-client");
+    my $version = $instance->ssh_script_output(cmd => 'rpm -q --queryformat "%{VERSION}\n" cloud-regionsrv-client');
     # Only a specific version of the package has issue and only on a specific SP
     # Do not activate the workaround if the user explicitly decide using a specific ENDPOINT
-    if (is_sle('15-SP2+') && check_version('<10.1.7', $version) && check_var('PUBLIC_CLOUD_SCC_ENDPOINT', 'SUSEConnect')) {
+    record_info("DEBUG", "is_sle():" . is_sle('15-SP2+') . " version:$version check_version:" . check_version('<10.1.7', $version) . " PCSE:" . (!get_var('PUBLIC_CLOUD_SCC_ENDPOINT')));
+    if (is_sle('15-SP2+') && check_version('<10.1.7', $version) && !get_var('PUBLIC_CLOUD_SCC_ENDPOINT')) {
         record_soft_failure("bsc#1217583 IPv6 handling during registration. Force use SUSEConnect to work around it.");
         $suseconnect = 'SUSEConnect';
     }
