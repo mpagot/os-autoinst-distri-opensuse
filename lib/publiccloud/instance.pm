@@ -422,6 +422,12 @@ sub wait_for_ssh {
     my $retry = 0;    # count retries of unexpected sysout
     if ($args{systemup_check} and isok($exit_code)) {
         my $ssh_opts = $self->ssh_opts() . ' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlPath=none';
+        record_info("ssh_opts", $ssh_opts);
+        script_run('cat ~/.ssh/known_hosts || cat ~/.ssh/known_hosts2');
+        script_run("cat /home/$testapi::username/.ssh/known_hosts");
+        script_run('cat /etc/ssh/ssh_known_hosts || cat /etc/ssh/ssh_known_hosts2');
+        script_run('ssh -V');
+        script_run('ssh -o LogLevel=DEBUG3 -G ' . $args{username} . '@' . $self->{public_ip});
         while (($duration = time() - $start_time) < $args{timeout}) {
             # timeout recalculated removing consumed time until now
             # We don't support password authentication so it would just block the terminal
@@ -462,6 +468,11 @@ sub wait_for_ssh {
             script_run("ssh-keyscan $args{public_ip} | tee ~/.ssh/known_hosts /home/$testapi::username/.ssh/known_hosts");
         }
 
+        script_run('cat ~/.ssh/known_hosts || cat ~/.ssh/known_hosts2');
+        script_run("cat /home/$testapi::username/.ssh/known_hosts");
+        script_run('cat /etc/ssh/ssh_known_hosts || cat /etc/ssh/ssh_known_hosts2');
+        script_run('ssh -o LogLevel=DEBUG3 -G ' . $args{username} . '@' . $self->{public_ip});
+ 
         # Finally make sure that SSH works
         $self->ssh_script_retry(cmd => "true", username => $args{username}, timeout => 90, retry => 5, delay => 3);
 
