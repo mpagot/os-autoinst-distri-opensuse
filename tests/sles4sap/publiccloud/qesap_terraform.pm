@@ -177,6 +177,11 @@ sub run {
     }
 
     $playbook_configs{scc_code} = get_required_var('SCC_REGCODE_SLES4SAP') if ($os_image_name =~ /byos/i);
+    if ($os_image_name =~ /byos/i) {
+        record_info("REGCODE:" . $playbook_configs{scc_code});
+    } else {
+        record_info("REGCODE:NO OS:$os_image_name");
+    }
     my @addons = split(/,/, get_var('SCC_ADDONS', ''));
     # This implementation has a known limitation
     # if SCC_ADDONS has two or more elements (like "ltss,ltss_es")
