@@ -58,6 +58,7 @@ sub run_ssh_command {
     my $self = shift;
     my %args = testapi::compat_args({cmd => undef}, ['cmd'], @_);
     die('Argument <cmd> missing') unless ($args{cmd});
+    record_info('SSH_OPTS', "run_ssh_command: args:" . $args{ssh_opts} . "   self:" . $self->ssh_opts());
     $args{ssh_opts} //= $self->ssh_opts();
     $args{username} //= $self->username();
     $args{timeout} //= SSH_TIMEOUT;

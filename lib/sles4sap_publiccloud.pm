@@ -400,6 +400,7 @@ sub stop_hana {
         # -f requests ssh to go to background just before command execution
         # -n is about stdin redirection and it is needed by -f to work
         my $crash_ssh_opts = $self->{my_instance}->ssh_opts . ' -fn -o ServerAliveInterval=2';
+        record_info('SSH_OPTS', "stop_hana: crash_ssh_opts: $crash_ssh_opts   ssh_opts:" . $self->{my_instance}->ssh_opts);
 
         $self->{my_instance}->run_ssh_command(
             cmd => $cmd,

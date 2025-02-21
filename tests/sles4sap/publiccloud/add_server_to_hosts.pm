@@ -19,7 +19,7 @@ sub run {
 
     foreach my $instance (@{$self->{instances}}) {
         next if ($instance->{'instance_id'} !~ m/vmhana/);
-        record_info("$instance");
+        record_info('SSH_OPTS', "instance: $instance   ssh_opts:" . $instance->ssh_opts);
 
         my $ibsm_ip = get_required_var('IBSM_IP');
         $instance->run_ssh_command(cmd => "echo \"$ibsm_ip download.suse.de\" | sudo tee -a /etc/hosts", username => 'cloudadmin');

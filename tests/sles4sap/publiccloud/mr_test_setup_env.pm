@@ -54,7 +54,9 @@ sub run {
     record_info('Copy mr_test code to instance OK');
 
     # Clear $instance->ssh_opts which ommit the known hosts file and strict host checking by default
+    record_info('SSH_OPTS', "BEFORE: instance: $instance   ssh_opts:" . $instance->ssh_opts);
     $instance->ssh_opts('');
+    record_info('SSH_OPTS', "AFTER: instance: $instance   ssh_opts:" . $instance->ssh_opts);
     $instance->network_speed_test();
 
     # Set ssh-tunnel

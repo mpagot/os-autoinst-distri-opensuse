@@ -124,6 +124,7 @@ sub set_cli_ssh_opts {
       unless $self->{my_instance};
     $ssh_opts //= join(' ', '-E', '/var/tmp/ssh_sut.log');
     $self->{my_instance}->ssh_opts($ssh_opts);
+    record_info('SSH_OPTS', "set_cli_ssh_opts ssh_opts:" . $self->{my_instance}->ssh_opts);
 }
 
 sub post_fail_hook {
