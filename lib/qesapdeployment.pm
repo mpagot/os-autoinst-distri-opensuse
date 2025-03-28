@@ -2021,8 +2021,8 @@ sub qesap_calculate_address_range {
     my $ip3 = $offset % 256;
 
     return (
-        main_address_range => sprintf("10.%d.%d.0/21", $ip2, $ip3),
-        subnet_address_range => sprintf("10.%d.%d.0/24", $ip2, $ip3),
+        main_address_range => sprintf("10.%d.%d.0/" . get_var('DELETE_ME_MAIN_RANGE', '21'), $ip2, $ip3),
+        subnet_address_range => sprintf("10.%d.%d.0/" . get_var('DELETE_ME_SUB_RANGE','24'), $ip2, $ip3),
     );
 }
 
