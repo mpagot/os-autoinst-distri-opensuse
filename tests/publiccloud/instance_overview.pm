@@ -63,6 +63,10 @@ sub collect_system_information {
     assert_script_run("cat /proc/cpuinfo | tee instance_overview/cpuinfo.txt");
     assert_script_run("cat /proc/meminfo | tee instance_overview/meminfo.txt");
     assert_script_run("uname -a | tee instance_overview/uname.txt");
+    assert_script_run("systemctl is-system-running | tee instance_overview/systemctl_sysstat.txt");
+    assert_script_run("systemctl is-failed sysstat.service | tee instance_overview/systemctl_sysstat.txt");
+    assert_script_run("systemctl status sysstat.service | tee instance_overview/systemctl_sysstat.txt");
+    assert_script_run("journalctl -b -u sysstat.service | tee instance_overview/journalctl.txt");
     tar_and_upload_log("instance_overview/", "instance_overview.tar.gz", {gzip => 1});
     script_run("cd");
 }
