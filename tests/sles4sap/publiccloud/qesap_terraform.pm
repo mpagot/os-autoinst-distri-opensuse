@@ -38,7 +38,6 @@ use serial_terminal 'select_serial_terminal';
 use registration qw(get_addon_fullname scc_version %ADDONS_REGCODE);
 use qam;
 
-our $ha_enabled = set_var_output('HA_CLUSTER', '0') =~ /false|0/i ? 0 : 1;
 
 sub test_flags {
     return {fatal => 1, publiccloud_multi_module => 1};
@@ -75,12 +74,13 @@ sub run {
     select_host_console();
     select_serial_terminal();
 
+    my $ha_enabled = set_var_output('HA_CLUSTER', '0') =~ /false|0/i ? 0 : 1;
     # Collect OpenQA variables and default values
-    set_var_output('NODE_COUNT', 1) unless ($ha_enabled);
+    #set_var_output('NODE_COUNT', 1) unless ($ha_enabled);
     # Cluster needs at least 2 nodes
     die "HA cluster needs at least 2 nodes. Check 'NODE_COUNT' parameter." if ($ha_enabled && (get_var('NODE_COUNT') <= 1));
 
-    set_var('FENCING_MECHANISM', 'native') unless ($ha_enabled);
+    #set_var('FENCING_MECHANISM', 'native') unless ($ha_enabled);
     set_var_output('ANSIBLE_REMOTE_PYTHON', '/usr/bin/python3');
 
     # Within the qe-sap-deployment terraform code, in each differend CSP implementation,
@@ -177,8 +177,8 @@ sub run {
     my $ansible_playbooks;
     my %playbook_configs = (
         ha_enabled => $ha_enabled,
-        registration => $reg_mode,
-        fencing => get_var('FENCING_MECHANISM'));
+        registration => $reg_mode);
+    $playbook_configs{fencing} = get_var('FENCING_MECHANISM') if get_var('FENCING_MECHANISM');
 
     if (get_var('PTF_ACCOUNT') && get_var('PTF_CONTAINER') && get_var('PTF_KEYNAME')) {
         $playbook_configs{ptf_files} = $ptf_files;
