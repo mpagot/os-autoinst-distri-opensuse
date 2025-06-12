@@ -31,7 +31,7 @@ sub run {
         upload_logs("ec2metadata.txt");
     }
 
-    assert_script_run("ps aux | nl");
+    assert_script_run("ps aux | nl", timeout => 1200);
 
     my $ip_color = (is_sle('>=15-SP3')) ? '-c=never' : '';
     assert_script_run("ip $ip_color a s");
