@@ -25,6 +25,7 @@ use bootloader_s390;
 use bootloader_zkvm;
 use bootloader_pvm;
 
+
 sub prepare_boot_params {
     my @params = ();
 

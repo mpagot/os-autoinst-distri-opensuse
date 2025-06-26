@@ -25,7 +25,8 @@ sub run {
     # Disable packagekit and install ReaR
     get_var('USE_YAST_REAR') ? select_console 'root-console' : select_serial_terminal;
     quit_packagekit;
-    zypper_call 'in ' . (is_sle('>=16') ? 'rear29a' : 'yast2-rear');
+    zypper_call 'se dhcp';
+    zypper_call 'in ' . (is_sle('>=16') ? 'rear29a dhcpcd' : 'yast2-rear');
     assert_script_run('test -d "/etc/rear"');
 
     # Configure ReaR by using YaST module

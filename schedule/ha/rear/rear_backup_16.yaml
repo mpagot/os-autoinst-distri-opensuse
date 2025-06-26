@@ -9,6 +9,7 @@ vars:
   SCC_REGISTER: 'installation'
   SYSTEM_ROLE: 'textmode'
   HOSTNAME: 'reartest'
+  AGAMA: '1'
   AGAMA_PRODUCT_ID: SLES
   INST_AUTO: ha/agama/sles_ha_default.jsonnet
 schedule:
