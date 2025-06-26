@@ -38,6 +38,8 @@ sub run {
         # Skip instances without HANA db or setup without cluster
         next if ($instance_id !~ m/vmhana/) or !$ha_enabled;
 
+        $self->run_cmd(cmd => "zypper ref");
+
         # Output the version of tool 'SAPHanaSR-showAttr'
         record_info('SAPHanaSR version number', $self->saphanasr_showAttr_version());
 
