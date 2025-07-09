@@ -46,7 +46,11 @@ tidy-full: tools/tidy
 .PHONY: unit-test
 unit-test:
 	prove -l -Ios-autoinst/ t/
+
+unit-test-shuffle:
 	prove --shuffle -l -Ios-autoinst/ t/
+
+unit-test-timed:
 	prove --timer -l -Ios-autoinst/ t/ 2>/dev/null | grep -E "t/.*\.t.*ok[[:space:]]+([0-9]+)[[:space:]]+ms" | sort -nrk 5,5
 
 .PHONY: test-compile
