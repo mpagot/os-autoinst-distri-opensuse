@@ -24,7 +24,7 @@ Its primary tasks are:
 
 =head1 VARIABLES
 
-=over 4
+=over
 
 =item B<PUBLIC_CLOUD_PROVIDER>
 
@@ -94,7 +94,12 @@ sub run {
     }
 
     record_info("TEST STAGE", "Init and configure the Pacemaker cluster");
-    ipaddr2_cluster_create(bastion_ip => $bastion_ip, rootless => get_var('IPADDR2_ROOTLESS', '0'));
+
+    my %ip = ipaddr2_ip_get();
+    ipaddr2_cluster_create(
+        bastion_ip => $bastion_ip,
+        frontend_ip => $ip{frontend_ip},
+        rootless => get_var('IPADDR2_ROOTLESS', '0'));
 }
 
 sub test_flags {

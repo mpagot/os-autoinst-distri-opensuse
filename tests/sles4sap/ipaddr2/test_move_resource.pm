@@ -33,6 +33,7 @@ sub run {
     select_serial_terminal;
 
     my $bastion_ip = ipaddr2_bastion_pubip();
+    my %ip = ipaddr2_ip_get();
 
     # 1. get the webpage using the LB floating IP. It should be from VM1 at the test beginning
     # 2. move the cluster resource on the VM2
@@ -48,19 +49,22 @@ sub run {
 
     # probe the webserver using the frontend IP
     # until the reply come from the VM-02
-    die "Takeover does not happens in time" unless ipaddr2_wait_for_takeover(bastion_ip => $bastion_ip, destination => 2);
+    die "Takeover does not happens in time" unless ipaddr2_wait_for_takeover(
+        bastion_ip => $bastion_ip,
+        destination => 2,
+        frontend_ip => $ip{frontend_ip});
 
     ipaddr2_os_connectivity_sanity();
 
     # Check the status on the VM that is supposed to be
     # the master for the webservice
-    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 2);
+    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 2, frontend_ip => $ip{frontend_ip});
     ipaddr2_test_other_vm(bastion_ip => $bastion_ip, id => 1);
 
     # Slow down, take a break, then check again, nothing should be changed.
     sleep 60;
     ipaddr2_os_connectivity_sanity();
-    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 2);
+    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 2, frontend_ip => $ip{frontend_ip});
     ipaddr2_test_other_vm(bastion_ip => $bastion_ip, id => 1);
 
     # Repeat the same but this time from VM-02 to VM-01
@@ -68,16 +72,19 @@ sub run {
     ipaddr2_crm_move(bastion_ip => $bastion_ip, destination => 1);
     sleep 30;
 
-    die "Takeover does not happens in time" unless ipaddr2_wait_for_takeover(bastion_ip => $bastion_ip, destination => 1);
+    die "Takeover does not happens in time" unless ipaddr2_wait_for_takeover(
+        bastion_ip => $bastion_ip,
+        destination => 1,
+        frontend_ip => $ip{frontend_ip});
 
     ipaddr2_os_connectivity_sanity();
-    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 1);
+    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 1, frontend_ip => $ip{frontend_ip});
     ipaddr2_test_other_vm(bastion_ip => $bastion_ip, id => 2);
 
     # Slow down, take a break, then check again, nothing should be changed.
     sleep 60;
     ipaddr2_os_connectivity_sanity();
-    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 1);
+    ipaddr2_test_master_vm(bastion_ip => $bastion_ip, id => 1, frontend_ip => $ip{frontend_ip});
     ipaddr2_test_other_vm(bastion_ip => $bastion_ip, id => 2);
 
     # Clear all location constrain used during the test

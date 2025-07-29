@@ -25,7 +25,7 @@ for both SUT VMs and lists them for logging purposes.
 
 =head1 VARIABLES
 
-=over 4
+=over
 
 =item B<IPADDR2_CLOUDINIT>
 

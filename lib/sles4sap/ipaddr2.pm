@@ -27,9 +27,9 @@ Library to manage ipaddr2 tests
 =cut
 
 our @EXPORT = qw(
+  ipaddr2_ip_get
   ipaddr2_infra_deploy
   ipaddr2_infra_destroy
-  ipaddr2_bastion_key_accept
   ipaddr2_configure_web_server
   ipaddr2_refresh_repo
   ipaddr2_deployment_sanity
@@ -38,7 +38,9 @@ our @EXPORT = qw(
   ipaddr2_os_connectivity_sanity
   ipaddr2_cluster_create
   ipaddr2_cluster_sanity
+  ipaddr2_bastion_key_accept
   ipaddr2_bastion_pubip
+  ipaddr2_bastion_ssh_addr
   ipaddr2_internal_key_accept
   ipaddr2_internal_key_gen
   ipaddr2_scc_check
@@ -53,8 +55,6 @@ our @EXPORT = qw(
   ipaddr2_cloudinit_logs
   ipaddr2_azure_resource_group
   ipaddr2_ssh_internal
-  ipaddr2_bastion_ssh_addr
-  ipaddr2_get_internal_vm_private_ip
   ipaddr2_network_peering_create
   ipaddr2_patch_system
   ipaddr2_add_server_repos_to_hosts
@@ -62,36 +62,59 @@ our @EXPORT = qw(
 
 use constant DEPLOY_PREFIX => 'ip2t';
 use constant WEB_RSC => 'rsc_web_00';
+use constant USER => 'cloudadmin';
 
-our $user = 'cloudadmin';
 our $bastion_vm_name = DEPLOY_PREFIX . "-vm-bastion";
 our $bastion_pub_ip = DEPLOY_PREFIX . '-pub_ip';
 our $nat_pub_ip = DEPLOY_PREFIX . '-nat_pub_ip';
 # Storage account name must be between 3 and 24 characters in length
-# and use numbers and lower-case letters only.
+# and use numbers and lowercase letters only.
 our $storage_account = DEPLOY_PREFIX . 'storageaccount';
-our %priv_net_address_range = get_private_ip_range();
-our $priv_ip_range = $priv_net_address_range{priv_ip_range};
-our $frontend_ip = $priv_ip_range . '.50';
+our %ipaddr2_ip_addresses = ipaddr2_ip_get();
 our $ping_cmd = 'ping -c 3';
 our $key_id = 'id_rsa';
 
-=head2 get_private_ip_range
+=head2 ipaddr2_ip_get
 
-    my $range = get_private_ip_range();
+    my $ip = ipaddr2_ip_get();
 
-count the private ip range and return
+Return an hash with some informations about IPs and network ranges
+
+Structure has:
+
+=over
+
+=item B<main_address_range>: address range for the vnet
+
+=item B<subnet_address_range>: address range for the subnet
+
+=item B<frontend_ip>: internal IP used as frontend IP to expose the web server through the LB.
+
+=back
+
+Arguments are:
+
+=over
+
+=item B<SLOT> - integer to be used as seed in calculating addresses,
+                usually it could be the value of WORKER_ID
+
+=back
 =cut
+sub ipaddr2_ip_get {
+    my (%args) = @_;
 
-sub get_private_ip_range {
-    my %range = (main_address_range => '192.168.0.0/16', subnet_address_range => '192.168.0.0/24');
-    if (my $worker_id = get_var("WORKER_ID")) {
-        %range = ibsm_calculate_address_range(slot => $worker_id);
+    my %out;
+    if ($args{slot}) {
+        %out = ibsm_calculate_address_range(slot => $args{slot});
+    }
+    else {
+        %out = (main_address_range => '192.168.0.0/16', subnet_address_range => '192.168.0.0/24');
     }
 
-    $range{priv_ip_range} = ($range{main_address_range} =~ /^(\d+\.\d+\.\d+)\./) ? $1 : '';
-
-    return %range;
+    $out{priv_ip_range} = ($out{main_address_range} =~ /^(\d+\.\d+\.\d+)\./) ? $1 : '';
+    $out{frontend_ip} = $out{priv_ip_range} . '.50';
+    return %out;
 }
 
 =head2 ipaddr2_azure_resource_group
@@ -147,17 +170,18 @@ sub ipaddr2_cloudinit_create {
     my (%args) = @_;
     $args{nginx_root} //= '/srv/www/htdocs';
 
-    # start dynamically compose the profile
-    # 1. Header and disable initial zypper up, it will be done
+    # start to dynamically compose the profile
+    # 1. Header
+    # 2. disable initial zypper up, the update is done later by a dedicated test module,
     #    after adding repo for package we like to test
-    # socat is needed but not installed by default in 12sp5
+    # 3. socat is needed but not installed by default in 12sp5
     my $cloud_init_content = <<END;
 #cloud-config
 package_upgrade: false
 packages:
   - socat
 END
-    # 2. Install and configure nginx, two variants as
+    # 4. Install and configure nginx, two variants as
     #    12sp5 does not have the nginx package
     if ($args{external_repo}) {
         $cloud_init_content .= <<END;
@@ -192,7 +216,8 @@ END
 
 =head2 ipaddr2_infra_deploy
 
-    my $rg = ipaddr2_infra_deploy();
+    my %ip = ipaddr2_ip_get();
+    my $rg = ipaddr2_infra_deploy(region => 'europe', os => 'os:suse:sles4sap:15sp6:latest', ip => \%ip);
 
 Create a deployment in Azure designed for this specific test.
 
@@ -209,6 +234,12 @@ Create a deployment in Azure designed for this specific test.
 
 =item B<os> - existing Load balancer NAME
 
+=item B<ip> - Structure storing information about IP and network ranges of the deployment
+              Structure has to have:
+               - B<main_address_range>: address range for the vnet
+               - B<subnet_address_range>: address range for the subnet
+               - B<frontend_ip>: internal IP used as frontend IP to expose the web server through the LB.
+
 =item B<diagnostic> - enable diagnostic features if 1
 
 =item B<cloudinit_profile> - filename of the cloud-init profile. Usually this one is the return value of
@@ -223,8 +254,10 @@ Create a deployment in Azure designed for this specific test.
 
 sub ipaddr2_infra_deploy {
     my (%args) = @_;
-    foreach (qw(region os)) {
+    foreach (qw(region os ip)) {
         croak("Argument < $_ > missing") unless $args{$_}; }
+    foreach (qw(main_address_range subnet_address_range frontend_ip)) {
+        croak("Argument < $_ > missing within ip structure") unless $args{ip}{$_}; }
     $args{diagnostic} //= 0;
     $args{trusted_launch} //= 1;
 
@@ -248,7 +281,7 @@ sub ipaddr2_infra_deploy {
 
     # Create a VNET only needed later when creating the VM
     # Use $rg instead of DEPLOY_PREFIX to try to prevent
-    # some deployment failures like:
+    # certain deployment failures like:
     #    Subnet(ip2t-snet) does not exist, but failed to create a new subnet
     #    with address prefix 10.0.0.0/24.
     my $vnet = "$rg-vnet";
@@ -257,9 +290,9 @@ sub ipaddr2_infra_deploy {
         resource_group => $rg,
         region => $args{region},
         vnet => $vnet,
-        address_prefixes => $priv_net_address_range{main_address_range},
+        address_prefixes => $args{ip}{main_address_range},
         snet => $subnet,
-        subnet_prefixes => $priv_net_address_range{subnet_address_range});
+        subnet_prefixes => $args{ip}{subnet_address_range});
 
     # Create a Network Security Group
     # only needed later when creating the VM
@@ -269,7 +302,7 @@ sub ipaddr2_infra_deploy {
         name => $nsg);
 
     # Create a public IP for external test access.
-    # It will be assigned to the 3rd VM (bastion role)
+    # It is later assigned to the third VM (bastion role)
     az_network_publicip_create(
         resource_group => $rg,
         name => $bastion_pub_ip,
@@ -299,12 +332,12 @@ sub ipaddr2_infra_deploy {
         nat_gateway => $nat_name);
 
     # Create the load balancer entity.
-    # Mostly this one is just a "group" definition
+    # Think about it as a "group" definition
     # to link back-end (2 VMs) and front-end (the Pub IP) resources
     # SKU Standard (and not Basic) is needed to get some Metrics
     my $lb = DEPLOY_PREFIX . '-lb';
     my $lb_be = DEPLOY_PREFIX . '-backend_pool';
-    my $lb_fe = DEPLOY_PREFIX . '-frontent_ip';
+    my $lb_fe = DEPLOY_PREFIX . '-frontend_ip';
     az_network_lb_create(
         resource_group => $rg,
         name => $lb,
@@ -312,10 +345,10 @@ sub ipaddr2_infra_deploy {
         snet => $subnet,
         backend => $lb_be,
         frontend_ip_name => $lb_fe,
-        fip => $frontend_ip,
+        fip => $args{ip}{frontend_ip},
         sku => 'Standard');
 
-    # All the 2 VM will be later assigned to it.
+    # All the 2 VM are later assigned to it.
     # The load balancer does not explicitly knows about it
     my $as = DEPLOY_PREFIX . '-as';
     az_vm_as_create(
@@ -339,7 +372,7 @@ sub ipaddr2_infra_deploy {
         resource_group => $rg,
         region => $args{region},
         image => $args{os},
-        username => $user,
+        username => USER,
         vnet => $vnet,
         snet => $subnet,
         ssh_pubkey => get_ssh_private_key_path() . '.pub',
@@ -372,7 +405,7 @@ sub ipaddr2_infra_deploy {
             az_vm_wait_cloudinit(
                 resource_group => $rg,
                 name => $vm,
-                username => $user);
+                username => USER);
         }
 
         az_vm_openport(
@@ -402,7 +435,7 @@ sub ipaddr2_infra_deploy {
             resource_group => $rg,
             ipconfig_name => $ip_config,
             nic_name => $nic_name,
-            ip => ipaddr2_get_internal_vm_private_ip(id => $i));
+            ip => ipaddr2_get_internal_vm_private_ip(id => $i, priv_ip_range => $args{ip}{priv_ip_range}));
 
         # Add the IpConfig to the LB pool
         az_ipconfig_pool_add(
@@ -415,22 +448,22 @@ sub ipaddr2_infra_deploy {
     }
 
     # Health probe is using the port exposed by the cluster RA azure-lb
-    # to understand if each of the VM in the cluster is OK
-    # Is probably eventually the cluster itself that
+    # to understand if each of the VM in the cluster is OK.
+    # It is eventually the cluster itself that
     # cares to monitor the below service (port 80)
-    my $lbhp = $lb . "_health";
-    my $lbhp_port = '62500';
+    my $lb_health_port_name = $lb . "_health";
+    my $lb_health_port = '62500';
     az_network_lb_probe_create(
         resource_group => $rg,
         lb_name => $lb,
-        name => $lbhp,
-        port => $lbhp_port);
+        name => $lb_health_port_name,
+        port => $lb_health_port);
 
     # Configure the load balancer behavior
     az_network_lb_rule_create(
         resource_group => $rg,
         lb_name => $lb,
-        hp_name => $lbhp,
+        hp_name => $lb_health_port_name,
         backend => $lb_be,
         frontend_ip => $lb_fe,
         name => $lb . "_rule",
@@ -471,7 +504,7 @@ in the deployment that has public IP.
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -480,7 +513,7 @@ in the deployment that has public IP.
 sub ipaddr2_bastion_ssh_addr {
     my (%args) = @_;
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
-    return $user . '@' . $args{bastion_ip};
+    return USER . '@' . $args{bastion_ip};
 }
 
 =head2 ipaddr2_bastion_key_accept
@@ -492,7 +525,7 @@ For the worker to accept the ssh key of the bastion
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -532,7 +565,7 @@ This function always use cloudadmin as user in any ssh connections.
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<key_checking> - optional parameter allow to tune value for StrictHostKeyChecking
@@ -553,7 +586,7 @@ sub ipaddr2_internal_key_accept {
     my ($vm_name, $vm_addr, $ret, $start_time, $exit_code, $score);
     foreach my $i (1 .. 2) {
         $vm_name = ipaddr2_get_internal_vm_private_ip(id => $i);
-        $vm_addr = "$user\@$vm_name";
+        $vm_addr = USER . "\@$vm_name";
 
         # The worker reaches the two remote internal VMs
         # through the bastion VM, using ssh proxy mode.
@@ -624,7 +657,7 @@ it is later on needed by crm cluster init/join
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<key_checking> - optional parameter allow to tune value for StrictHostKeyChecking
@@ -641,7 +674,7 @@ sub ipaddr2_internal_key_gen {
     my (%args) = @_;
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
     $args{key_checking} //= 'accept-new';
-    $args{user} //= $user;
+    $args{user} //= USER;
     my $key_policy = '-oStrictHostKeyChecking=' . $args{key_checking};
 
     my $bastion_ssh_addr = ipaddr2_bastion_ssh_addr(bastion_ip => $args{bastion_ip});
@@ -653,7 +686,7 @@ sub ipaddr2_internal_key_gen {
     foreach my $i (1 .. 2) {
         $vm_name = ipaddr2_get_internal_vm_private_ip(id => $i);
         # always use cloudadmin for ssh connections even when $args{user} is root
-        $vm_addr = "$user\@$vm_name";
+        $vm_addr = USER . "\@$vm_name";
 
         # Assert if the folder ~/.ssh does not exist in the VM
         ipaddr2_ssh_internal(id => $i,
@@ -662,7 +695,7 @@ sub ipaddr2_internal_key_gen {
 
         # Generate public/private keys pair for cloudadmin user on the internal VMs.
         # Generate them on the openQA worker, in a folder within /tmp.
-        # The keys will be distributed using ssh and scp in Proxy mode.
+        # The keys is distributed using ssh and scp in Proxy mode.
         $this_tmp = ipaddr2_get_worker_tmp_for_internal_vm(id => $i);
         #assert_script_run("rm -rf $this_tmp");
         assert_script_run("mkdir -p $this_tmp");
@@ -733,7 +766,7 @@ Add pub ssh key for a specific user to the same use authorized_key file on the  
 =item B<key_checking> - tune value for StrictHostKeyChecking ssh option.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<user> - set custom user name. Default is cloudadmin.
@@ -748,7 +781,7 @@ sub ipaddr2_internal_key_authorize {
     foreach (qw(src dst key_checking)) {
         croak("Argument < $_ > missing") unless $args{$_}; }
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
-    $args{user} //= $user;
+    $args{user} //= USER;
 
     my $vm_name;
     my $remote_key_tmp_path = '/tmp/other_vm';
@@ -771,7 +804,7 @@ sub ipaddr2_internal_key_authorize {
                 # This is the public key to be registered, so the source
                 ipaddr2_get_worker_tmp_for_internal_vm(id => $args{src}),
                 $this_key),
-            "$user\@$vm_name:$remote_key_tmp_path/$this_key"));
+            USER . "\@$vm_name:$remote_key_tmp_path/$this_key"));
     my $reg_cmd = ($args{user} eq 'root') ?
       "sudo sh -c \"cat $remote_key_tmp_path/$this_key >> $authorize_file\"" :
       "cat $remote_key_tmp_path/$this_key >> $authorize_file";
@@ -833,16 +866,18 @@ sub ipaddr2_deployment_sanity {
 
 =head2 ipaddr2_os_sanity
 
-    ipaddr2_os_sanity()
+    ipaddr2_os_sanity(priv_ip_range => '192.168.0')
 
-Run some OS level checks on the various VMs composing the deployment.
+Run some OS level checks on all the VMs in the deployment.
 die in case of failure. Tests are targeting all the VM.
 Tests are independent by the cluster status.
 
 =over
 
+=item B<priv_ip_range> - common part of all the private IPs
+
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<user> - user expected to be able to ssh connect password-less from one internal VM to the other.
@@ -853,10 +888,12 @@ Tests are independent by the cluster status.
 
 sub ipaddr2_os_sanity {
     my (%args) = @_;
-    $args{bastion_ip} //= ipaddr2_bastion_pubip();
-    $args{user} //= $user;
 
-    ipaddr2_os_network_sanity(bastion_ip => $args{bastion_ip});
+    croak("Argument < priv_ip_range > missing") unless $args{priv_ip_range};
+    $args{bastion_ip} //= ipaddr2_bastion_pubip();
+    $args{user} //= USER;
+
+    ipaddr2_os_network_sanity(bastion_ip => $args{bastion_ip}, priv_ip_range => $args{priv_ip_range});
     ipaddr2_os_connectivity_sanity(bastion_ip => $args{bastion_ip});
     ipaddr2_os_ssh_sanity(user => $args{user}, bastion_ip => $args{bastion_ip});
 
@@ -880,7 +917,7 @@ Run some cluster level checks
 =item B<id> - ID of the internal VM where to run the crm commands. Default is 1.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -929,7 +966,7 @@ die in case of failure
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -983,7 +1020,7 @@ Run some checks about cloud-init
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1006,7 +1043,7 @@ sub ipaddr2_cloudinit_sanity {
             ipaddr2_ssh_internal(id => $id,
                 cmd => $_,
                 bastion_ip => $args{bastion_ip},
-                tiemout => 180);    # increase the timeout for zypper se -s -i cloud-init
+                timeout => 180);
         }
     }
 }
@@ -1020,7 +1057,7 @@ Collect some cloud-init related logs
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1058,8 +1095,10 @@ Check that private IP are in the network configuration on the internal VMs
 
 =over
 
+=item B<priv_ip_range> - common part of all the private IPs
+
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1067,11 +1106,13 @@ Check that private IP are in the network configuration on the internal VMs
 
 sub ipaddr2_os_network_sanity {
     my (%args) = @_;
+
+    croak("Argument < priv_ip_range > missing") unless $args{priv_ip_range};
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
 
     foreach (1 .. 2) {
         ipaddr2_ssh_internal(id => $_,
-            cmd => "ip a show eth0 | grep -E \"inet .*$priv_ip_range\"",
+            cmd => "ip a show eth0 | grep -E \"inet .*$args{priv_ip_range}\"",
             bastion_ip => $args{bastion_ip});
     }
 }
@@ -1086,7 +1127,7 @@ die in case of failure
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<user> - user supposed to be able to ssh connect password-less from one internal VM to the other.
@@ -1099,7 +1140,7 @@ die in case of failure
 sub ipaddr2_os_ssh_sanity {
     my (%args) = @_;
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
-    $args{user} //= $user;
+    $args{user} //= USER;
     my $user_ssh = ($args{user} eq 'root') ? '/root/' : "/home/$args{user}/";
     $user_ssh .= '.ssh';
 
@@ -1133,7 +1174,7 @@ sub ipaddr2_os_ssh_sanity {
     # the bastion and each of the internal VMs
     foreach my $i (1 .. 2) {
         ipaddr2_ssh_internal(id => $i,
-            cmd => "whoami | grep $user",
+            cmd => "whoami | grep " . USER,
             bastion_ip => $args{bastion_ip});
 
         # check root
@@ -1154,7 +1195,7 @@ run a command on the bastion using assert_script_run
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<cmd> - command to run there
@@ -1184,7 +1225,7 @@ run a command on the bastion using script_run
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<cmd> - command to run there
@@ -1214,7 +1255,7 @@ run a command on the bastion using script_output
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<cmd> - command to run there
@@ -1251,7 +1292,7 @@ like assert_script_run or script_output.
 =item B<id> - ID of the internal VM. Used to compose its name and as address for ssh.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<cmd> - Command to be run on the internal VM.
@@ -1267,7 +1308,7 @@ sub ipaddr2_ssh_internal_cmd {
 
     return join(' ',
         'ssh', '-J', ipaddr2_bastion_ssh_addr(bastion_ip => $args{bastion_ip}),
-        "$user\@" . ipaddr2_get_internal_vm_private_ip(id => $args{id}),
+        USER . '@' . ipaddr2_get_internal_vm_private_ip(id => $args{id}),
         "'$args{cmd}'");
 }
 
@@ -1289,7 +1330,7 @@ using the assert_script_run API
 =item B<cmd> - Command to be run on the internal VM.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<timeout> - Execution timeout, default 90sec
@@ -1334,7 +1375,7 @@ Return the command output.
 =item B<cmd> - Command to be run on the internal VM.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<timeout> - Execution timeout, default 90sec
@@ -1359,15 +1400,17 @@ sub ipaddr2_ssh_internal_output {
 
 =head2 ipaddr2_cluster_create
 
-    ipaddr2_cluster_create();
+    ipaddr2_cluster_create(frontend_ip => '192.168.0.50');
 
 Initialize and configure the Pacemaker cluster on the two internal nodes
 
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
+
+=item B<frontend_ip> - Internal IP used as frontend IP to expose the web server through the LB.
 
 =item B<rootless> - Enable or disable the rootless mode. Default is normal root mode.
 
@@ -1376,6 +1419,7 @@ Initialize and configure the Pacemaker cluster on the two internal nodes
 
 sub ipaddr2_cluster_create {
     my (%args) = @_;
+    croak("Argument < frontend_ip > missing") unless $args{frontend_ip};
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
     $args{rootless} //= 0;
 
@@ -1393,7 +1437,7 @@ sub ipaddr2_cluster_create {
         cmd => 'sudo crm cluster init -y --name DONALDUCK',
         bastion_ip => $args{bastion_ip});
 
-    my $join_str = $args{rootless} ? "$user\@" : "";
+    my $join_str = $args{rootless} ? USER . '@' : "";
     $join_str .= ipaddr2_get_internal_vm_private_ip(id => 1);
     ipaddr2_ssh_internal(id => 2,
         cmd => "sudo crm cluster join -y -c $join_str",
@@ -1411,7 +1455,7 @@ sub ipaddr2_cluster_create {
             'meta target-role="Started"',
             'operations \$id="rsc_ip_RES-operations"',
             'op monitor interval="10s" timeout="20s"',
-            "params ip=\"$frontend_ip\""),
+            "params ip=\"$args{frontend_ip}\""),
         bastion_ip => $args{bastion_ip});
 
     ipaddr2_ssh_internal(id => 1,
@@ -1458,7 +1502,7 @@ Return 1 if all modules are registered, 0 if at least one is not.
 =item B<id> - VM id where to install and configure the web server
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1501,7 +1545,7 @@ ipaddr2_infra_deploy by adding couple of lines to cloud-init configuration file.
 =item B<scc_code> - registration code
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1541,7 +1585,7 @@ This function is in charge to:
 =item B<id> - VM id where to install and configure the web server
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<nginx_root> - Optional argument: default is B</srv/www/htdocs>. This argument allows
@@ -1595,7 +1639,7 @@ Call zypper refresh
 =item B<id> - VM id where to install and configure the web server
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1661,7 +1705,7 @@ sub ipaddr2_get_internal_vm_name {
 
 =head2 ipaddr2_get_internal_vm_private_ip
 
-    my $private_ip = ipaddr2_get_internal_vm_private_ip(id => 42);
+    my $private_ip = ipaddr2_get_internal_vm_private_ip(id => 42, priv_ip_range => '1.2.3');
 
 compose and return a string representing the VM private IP
 
@@ -1669,13 +1713,17 @@ compose and return a string representing the VM private IP
 
 =item B<id> - VM id number
 
+=item B<priv_ip_range> - common part of all the private IPs
+
 =back
 =cut
 
 sub ipaddr2_get_internal_vm_private_ip {
     my (%args) = @_;
     croak("Argument < id > missing") unless $args{id};
-    return $priv_ip_range . '.4' . $args{id};
+
+    $args{priv_ip_range} //= $ipaddr2_ip_addresses{priv_ip_range};
+    return $args{priv_ip_range} . '.4' . $args{id};
 }
 
 =head2 ipaddr2_get_worker_tmp_for_internal_vm
@@ -1705,7 +1753,7 @@ move the rsc_web_00 resource to the indicated node
 =item B<id> - VM id where to run the command, not so important as long as it is in the cluster. Default 1.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1739,7 +1787,7 @@ clear all location constrain used during the test
 =item B<id> - VM id where to run the command, not so important as long as it is in the cluster. Default 1.
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1762,11 +1810,11 @@ sub ipaddr2_crm_clear {
 
 =head2 ipaddr2_wait_for_takeover
 
-    die "Takeover does not happens in time" unless  ipaddr2_wait_for_takeover(destination => 2);
+    die "Takeover does not happens in time" unless  ipaddr2_wait_for_takeover(destination => 2, frontend_ip => 192.168.0.50);
 
 Wait that web server is responding from the node indicated by id.
 This check is implemented running a curl request from the bastion
-and using the virtual IP address ar URL.
+and using the virtual IP address as URL.
 This is possible because the webserver on each node is configured 
 to return its hostname in the response.
 Return 1 as soon as it gets the id in the response. Return 0 if not within 10 minutes.
@@ -1775,8 +1823,10 @@ Return 1 as soon as it gets the id in the response. Return 0 if not within 10 mi
 
 =item B<destination> - VM id that from where the web server response is expected to come from
 
+=item B<frontend_ip> - Internal IP used as frontend IP to expose the web server through the LB.
+
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1785,7 +1835,11 @@ Return 1 as soon as it gets the id in the response. Return 0 if not within 10 mi
 
 sub ipaddr2_wait_for_takeover {
     my (%args) = @_;
-    croak("Argument < destination > missing") unless $args{destination};
+    # frontend_ip has to be mandatory here even if not explicitly used
+    # in this function, but only passed to ipaddr2_get_web.
+    # It is about avoiding to also have to additionally care about slot argument for ipaddr2_ip_get
+    foreach (qw(destination frontend_ip)) {
+        croak("Argument < $_ > missing") unless $args{$_}; }
 
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
 
@@ -1795,7 +1849,7 @@ sub ipaddr2_wait_for_takeover {
     while ($counter < 60) {
         if (ipaddr2_get_web(
                 bastion_ip => $args{bastion_ip},
-                web_url => $frontend_ip,
+                web_url => $args{frontend_ip},
                 str_match => $dest_vm)) {
             record_info("TAKE_OVER", "Webserver now reply from $dest_vm");
             return 1;
@@ -1820,7 +1874,7 @@ Return result of searching str_match in the curl response
 =item B<str_match> - string to search in the curl output
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1843,7 +1897,7 @@ sub ipaddr2_get_web {
 
 =head2 ipaddr2_test_master_vm
 
-    ipaddr2_test_master_vm(id => 2);
+    ipaddr2_test_master_vm(id => 2, frontend_ip => '192.168.0.50');
 
 Check the status on the VM that is supposed to have
 the resources.
@@ -1852,8 +1906,10 @@ the resources.
 
 =item B<id> - VM id that is expected to be master
 
+=item B<frontend_ip> - Internal IP used as frontend IP to expose the web server through the LB.
+
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -1862,7 +1918,8 @@ the resources.
 
 sub ipaddr2_test_master_vm {
     my (%args) = @_;
-    croak("Argument < id > missing") unless $args{id};
+    foreach (qw(id frontend_ip)) {
+        croak("Argument < $_ > missing") unless $args{$_}; }
 
     $args{bastion_ip} //= ipaddr2_bastion_pubip();
 
@@ -1900,7 +1957,7 @@ sub ipaddr2_test_master_vm {
     # using the Azure LB front end IP
     die "The web server is not running on $vm" unless ipaddr2_get_web(
         bastion_ip => $args{bastion_ip},
-        web_url => $frontend_ip,
+        web_url => $args{frontend_ip},
         str_match => $vm);
     # test that the web page is reachable from the bastion
     # using the VM hostname where the web server is supposed to run
@@ -1913,6 +1970,7 @@ sub ipaddr2_test_master_vm {
         id => $args{id},
         cmd => 'ps -xa',
         bastion_ip => $args{bastion_ip});
+
     die "Nginx process not running on $vm" unless ($ps_ret =~ m/nginx/);
 
     # check IP
@@ -1920,12 +1978,12 @@ sub ipaddr2_test_master_vm {
         id => $args{id},
         cmd => 'ip a show eth0',
         bastion_ip => $args{bastion_ip});
-    die "VirtualIP $frontend_ip should be on $vm" unless ($res =~ m/$frontend_ip/);
+    die "VirtualIP $args{frontend_ip} should be on $vm" unless ($res =~ m/$args{frontend_ip}/);
 
     # Check if the master internal VM can ping the virtual IP
     ipaddr2_ssh_internal(
         id => $args{id},
-        cmd => join(' ', $ping_cmd, $frontend_ip),
+        cmd => join(' ', $ping_cmd, $args{frontend_ip}),
         bastion_ip => $args{bastion_ip});
 }
 
@@ -1941,7 +1999,7 @@ the resources.
 =item B<id> - VM id that is expected not to be master
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -2004,7 +2062,7 @@ Add download.suse.de server to hosts by specifying IBSM address
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =item B<ibsm_ip> - IP of the IBSm
@@ -2054,7 +2112,7 @@ Patch system
 =over
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -2090,7 +2148,7 @@ sub ipaddr2_patch_system {
             method => "script_run",
             timeout => 120);
 
-        # on 12-SP5, reboot will cause the VM to restart too fast which can cause failures with
+        # on 12-SP5, reboot causes the VM to restart too fast which can cause failures with
         # assert_script_run. Use script_run instead to avoid that
         ipaddr2_ssh_internal(id => $vm_id,
             cmd => "sudo reboot",
@@ -2099,7 +2157,7 @@ sub ipaddr2_patch_system {
             timeout => 60);
     }
 
-    # check if the VMs have rebooted sucessfully
+    # check if the VMs have rebooted successfully
     foreach my $ip (@vms) {
         my $timeout = 600;
         while ($timeout > 0) {
@@ -2151,7 +2209,7 @@ Register addons on SUT
 =item B<scc_addons> - List of scc addons as usually provided by SCC_ADDONS variable
 
 =item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
-                      Providing it as an argument is recommended in order
+                      Providing it as an argument is recommended
                       to avoid having to query Azure to get it.
 
 =back
@@ -2167,8 +2225,7 @@ sub ipaddr2_scc_addons {
 
     foreach my $id (1 .. 2) {
         # Register through an external library function register_addon.
-        # In order to make it able to run the addons registration
-        # on the two internal VMs, compose command do do it
+        # Compose the command to run the addons registration on the two internal VMs.
         my $remote_cmd = join(' ', '-J', $host_ip, 'cloudadmin@' . ipaddr2_get_internal_vm_private_ip(id => $id));
         for my $addon (@addons) {
             next if ($addon =~ /^\s+$/);

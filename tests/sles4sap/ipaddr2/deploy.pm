@@ -18,7 +18,7 @@ It creates the necessary resources in Azure, which includes:
 
 =head1 VARIABLES
 
-=over 4
+=over
 
 =item B<IPADDR2_CLOUDINIT>
 
@@ -100,7 +100,7 @@ sub run {
     # remove configuration file created by the PC factory
     # as it interfere with ssh behavior.
     # in particular it has setting about verbosity that
-    # break test steps that relay to remote ssh comman output
+    # break test steps that relay to remote ssh command output
     assert_script_run('rm ~/.ssh/config');
 
     my $os;
@@ -113,6 +113,7 @@ sub run {
         $os = $provider->get_image_id();
     }
 
+    my %ip = ipaddr2_ip_get();
     my %cloudinit_args;
     # This line of code is not really specific to cloud-init,
     # but it is used to ensure that registration code is available
@@ -126,6 +127,7 @@ sub run {
     $cloudinit_args{external_repo} = get_var('IPADDR2_NGINX_EXTREPO') if get_var('IPADDR2_NGINX_EXTREPO');
     my %deployment = (
         os => $os,
+        ip => \%ip,
         diagnostic => get_var('IPADDR2_DIAGNOSTIC', 0));
     $deployment{trusted_launch} = 0 if (check_var('IPADDR2_TRUSTEDLAUNCH', 0));
 

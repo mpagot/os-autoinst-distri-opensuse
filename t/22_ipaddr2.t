@@ -22,8 +22,9 @@ subtest '[ipaddr2_infra_deploy]' => sub {
     my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
     $azcli->redefine(assert_script_run => sub { push @calls, ['azure_cli', $_[0]]; return; });
     $azcli->redefine(script_output => sub { push @calls, ['azure_cli', $_[0]]; return 'Fermi'; });
+    my %ip = ipaddr2_ip_get();
 
-    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci');
+    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci', ip => \%ip);
 
     # push the list of commands in another list, this one without the source
     # In this way it is easier to inspect the content
@@ -39,6 +40,10 @@ subtest '[ipaddr2_infra_deploy]' => sub {
         'No cloudinit_profile provided so az vm create has no custom-data. Cloud-init disabled by default');
     ok((none { /sudo cloud-init status/ } @cmds),
         'No cloudinit_profile. Cloud-init disabled by default');
+    ok((any { /az network nic ip-config update.*private-ip-address.*192.168.0.41/ } @cmds),
+        "Run expected ip-config update for the VM with IP 41");
+    ok((any { /az network nic ip-config update.*private-ip-address.*192.168.0.42/ } @cmds),
+        "Run expected ip-config update for the VM with IP 42");
 };
 
 subtest '[ipaddr2_infra_deploy] cloudinit_profile' => sub {
@@ -54,9 +59,11 @@ subtest '[ipaddr2_infra_deploy] cloudinit_profile' => sub {
     $azcli->redefine(assert_script_run => sub { push @calls, ['azure_cli', $_[0]]; return; });
     $azcli->redefine(script_output => sub { push @calls, ['azure_cli', $_[0]]; return 'Fermi'; });
 
+    my %ip = ipaddr2_ip_get();
     ipaddr2_infra_deploy(
         region => 'Marconi',
         os => 'Meucci:gen2:ByoS',
+        ip => \%ip,
         cloudinit_profile => '/AAAAA/BBBBB');
 
     # push the list of commands in another list, this one without the source
@@ -86,7 +93,8 @@ subtest '[ipaddr2_infra_deploy] no cloud-init' => sub {
     $azcli->redefine(assert_script_run => sub { push @calls, ['azure_cli', $_[0]]; return; });
     $azcli->redefine(script_output => sub { push @calls, ['azure_cli', $_[0]]; return 'Fermi'; });
 
-    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci:gen2:ByoS');
+    my %ip = ipaddr2_ip_get();
+    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci:gen2:ByoS', ip => \%ip);
 
     # push the list of commands in another list, this one without the source
     # In this way it is easier to inspect the content
@@ -116,7 +124,8 @@ subtest '[ipaddr2_infra_deploy] diagnostic' => sub {
     $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
     $azcli->redefine(script_output => sub { push @calls, $_[0]; return 'Fermi'; });
 
-    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci', diagnostic => 1);
+    my %ip = ipaddr2_ip_get();
+    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci', ip => \%ip, diagnostic => 1);
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok((any { /az storage account create/ } @calls), 'Create storage');
@@ -140,7 +149,8 @@ subtest '[ipaddr2_infra_deploy] disable trusted launch' => sub {
             return; });
     $azcli->redefine(script_output => sub { push @calls, $_[0]; return 'Fermi'; });
 
-    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci', trusted_launch => 0);
+    my %ip = ipaddr2_ip_get();
+    ipaddr2_infra_deploy(region => 'Marconi', os => 'Meucci', ip => \%ip, trusted_launch => 0);
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok((any { /--security-type.*Standard/ } @calls), 'Disable trustedLaunch by setting --security-type Standard');
@@ -159,7 +169,8 @@ subtest '[ipaddr2_infra_deploy] with .vhd' => sub {
     $azcli->redefine(assert_script_run => sub { push @calls, ['azure_cli', $_[0]]; return; });
     $azcli->redefine(script_output => sub { push @calls, ['azure_cli', $_[0]]; return 'Fermi'; });
 
-    ipaddr2_infra_deploy(region => 'Sithonia', os => 'Toroni.vhd');
+    my %ip = ipaddr2_ip_get();
+    ipaddr2_infra_deploy(region => 'Sithonia', os => 'Toroni.vhd', ip => \%ip);
 
     # push the list of commands in another list, this one without the source
     # In this way it is easier to inspect the content
@@ -274,7 +285,7 @@ subtest '[ipaddr2_cluster_create]' => sub {
     $ipaddr2->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
     $ipaddr2->redefine(ipaddr2_bastion_pubip => sub { return 'Moriondo'; });
 
-    ipaddr2_cluster_create();
+    ipaddr2_cluster_create(frontend_ip => '192.168.0.50');
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok((any { /.*41.*cluster init/ } @calls), 'crm cluster init on VM1');
@@ -290,7 +301,7 @@ subtest '[ipaddr2_cluster_create] rootless' => sub {
     $ipaddr2->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
     $ipaddr2->redefine(ipaddr2_bastion_pubip => sub { return 'Moriondo'; });
 
-    ipaddr2_cluster_create(rootless => 1);
+    ipaddr2_cluster_create(frontend_ip => '192.168.0.50', rootless => 1);
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok((any { /.*cluster join.*-c.*cloudadmin@/ } @calls), 'crm cluster join uses a non root username');
@@ -371,7 +382,7 @@ subtest '[ipaddr2_os_sanity]' => sub {
             # return exactly what ipaddr2_os_ssh_sanity needs
             return 3; });
 
-    ipaddr2_os_sanity();
+    ipaddr2_os_sanity(priv_ip_range => '192.168.0');
 
     for my $call_idx (0 .. $#calls) {
         note($calls[$call_idx][0] . " C-->  $calls[$call_idx][1]");
@@ -401,7 +412,7 @@ subtest '[ipaddr2_os_sanity] root' => sub {
             # return exactly what ipaddr2_os_ssh_sanity needs
             return 3; });
 
-    ipaddr2_os_sanity(user => 'root');
+    ipaddr2_os_sanity(priv_ip_range => '192.168.0', user => 'root');
 
     for my $call_idx (0 .. $#calls) {
         note($calls[$call_idx][0] . " C-->  $calls[$call_idx][1]");
@@ -528,7 +539,7 @@ subtest '[ipaddr2_wait_for_takeover]' => sub {
     $ipaddr2->redefine(script_output => sub { push @calls, $_[0]; return 'I am ip2t-vm-042'; });
     $ipaddr2->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
 
-    my $ret = ipaddr2_wait_for_takeover(destination => 42);
+    my $ret = ipaddr2_wait_for_takeover(destination => 42, frontend_ip => '192.168.0.50');
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok(($ret eq 1), "Expected result 1 get $ret");
@@ -542,7 +553,7 @@ subtest '[ipaddr2_wait_for_takeover] timeout' => sub {
     $ipaddr2->redefine(script_output => sub { push @calls, $_[0]; return 'I am Galileo Galilei.'; });
     $ipaddr2->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
 
-    my $ret = ipaddr2_wait_for_takeover(destination => 42);
+    my $ret = ipaddr2_wait_for_takeover(destination => 42, frontend_ip => '192.168.0.50');
 
     note("\n  C-->  " . join("\n  C-->  ", @calls));
     ok(($ret eq 0), "Expected result 1 get $ret");
@@ -578,7 +589,7 @@ subtest '[ipaddr2_test_master_vm]' => sub {
             return $out;
     });
 
-    ipaddr2_test_master_vm(id => 42);
+    ipaddr2_test_master_vm(id => 42, frontend_ip => '192.168.0.50');
 
     for my $call_idx (0 .. $#calls) {
         note($calls[$call_idx][0] . " C-->  $calls[$call_idx][1]   $calls[$call_idx][2]");
@@ -619,7 +630,7 @@ subtest '[ipaddr2_test_master_vm] crm failure' => sub {
             return $out;
     });
 
-    dies_ok { ipaddr2_test_master_vm(id => 42) } "Die for failcount";
+    dies_ok { ipaddr2_test_master_vm(id => 42, frontend_ip => '192.168.0.50') } "Die for failcount";
 
     for my $call_idx (0 .. $#calls) {
         note($calls[$call_idx][0] . " C-->  $calls[$call_idx][1]   $calls[$call_idx][2]");
@@ -661,7 +672,7 @@ subtest '[ipaddr2_test_master_vm] web failure' => sub {
             return $out;
     });
 
-    dies_ok { ipaddr2_test_master_vm(id => 42) } "Die for web failure";
+    dies_ok { ipaddr2_test_master_vm(id => 42, frontend_ip => '192.168.0.50') } "Die for web failure";
 
     for my $call_idx (0 .. $#calls) {
         note($calls[$call_idx][0] . " C-->  $calls[$call_idx][1]   $calls[$call_idx][2]");
@@ -699,7 +710,7 @@ subtest '[ipaddr2_test_master_vm] nginx not running' => sub {
             return $out;
     });
 
-    dies_ok { ipaddr2_test_master_vm(id => 42) } "Die for nginx not running";
+    dies_ok { ipaddr2_test_master_vm(id => 42, frontend_ip => '192.168.0.50') } "Die for nginx not running";
 
     for my $call_idx (0 .. $#calls) {
         note($calls[$call_idx][0] . " C-->  $calls[$call_idx][1]   $calls[$call_idx][2]");
@@ -973,18 +984,24 @@ subtest '[ipaddr2_refresh_repo]' => sub {
     ok((any { /zypper ref/ } @calls), 'Call zypper ref');
 };
 
-subtest '[get_private_ip_range]' => sub {
-    my %ip_range = sles4sap::ipaddr2::get_private_ip_range();
-    my %expected_value = (main_address_range => '192.168.0.0/16', subnet_address_range => '192.168.0.0/24', priv_ip_range => '192.168.0');
+subtest '[ipaddr2_ip_get]' => sub {
+    my %ip_range = ipaddr2_ip_get();
+    my %expected_value = (
+        main_address_range => '192.168.0.0/16',
+        subnet_address_range => '192.168.0.0/24',
+        priv_ip_range => '192.168.0',
+        frontend_ip => '192.168.0.50');
     is_deeply \%ip_range, \%expected_value, "No worker_id, return 192.168.0.0 ip range";
+};
 
-    set_var('WORKER_ID', '123');
-    %ip_range = sles4sap::ipaddr2::get_private_ip_range();
-    $expected_value{main_address_range} = '10.3.208.0/21';
-    $expected_value{subnet_address_range} = '10.3.208.0/24';
-    $expected_value{priv_ip_range} = '10.3.208';
+subtest '[ipaddr2_ip_get] slot' => sub {
+    my %ip_range = ipaddr2_ip_get(slot => '123');
+    my %expected_value = (
+        main_address_range => '10.3.208.0/21',
+        subnet_address_range => '10.3.208.0/24',
+        priv_ip_range => '10.3.208',
+        frontend_ip => '10.3.208.50');
     is_deeply \%ip_range, \%expected_value, "IP range is count according by worker_id";
-    set_var('WORKER_ID', undef);
 };
 
 subtest '[ipaddr2_network_peering_create]' => sub {
