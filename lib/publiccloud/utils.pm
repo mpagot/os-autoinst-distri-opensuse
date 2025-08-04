@@ -137,6 +137,8 @@ sub register_addon {
     assert_script_run "sftp $remote:/etc/os-release /tmp/os-release";
     assert_script_run 'source /tmp/os-release';
 
+    record_info("REG INFO","Name:$name Code:" . $ADDONS_REGCODE{$name});
+
     if ($addon =~ /ltss/) {
         ssh_add_suseconnect_product(
             $remote,
