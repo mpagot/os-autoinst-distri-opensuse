@@ -35,6 +35,8 @@ sub run {
 
     quit_packagekit unless check_var('DESKTOP', 'textmode');
 
+    script_run('zypper lr');
+    script_run(q{zypper lr | awk -F '|' '{IGNORECASE=1} /nvidia/ {print $2}'});
     zypper_call(q{mr -d $(zypper lr | awk -F '|' '{IGNORECASE=1} /nvidia/ {print $2}')}, exitcode => [0, 3]);
     zypper_call(q{mr -e $(zypper lr | awk -F '|' '/Basesystem-Module/ {print $2}')}, exitcode => [0, 3]) if get_var('FLAVOR') =~ /TERADATA/;
 
