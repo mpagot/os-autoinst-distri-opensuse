@@ -1205,4 +1205,44 @@ subtest '[ipaddr2_cleanup] ipaddr2_deployment_logs' => sub {
 };
 
 
+
+subtest '[ipaddr2_logs_collect]' => sub {
+    my $ipaddr2 = Test::MockModule->new('sles4sap::ipaddr2', no_auto => 1);
+    $ipaddr2->redefine(ipaddr2_bastion_pubip => sub { return '1.2.3.4'; });
+    my @ssh_calls;
+    $ipaddr2->redefine(ipaddr2_ssh_internal => sub {
+            my (%args) = @_;
+            push @ssh_calls, "VM$args{id}: $args{cmd}";
+            return;
+    });
+    my @upload_calls;
+    $ipaddr2->redefine(upload_logs => sub {
+            push @upload_calls, $_[0];
+            return;
+    });
+
+    ipaddr2_logs_collect();
+
+    note("\n  SSH CALLS -->  " . join("\n  SSH CALLS -->  ", @ssh_calls));
+    note("\n  UPLOAD CALLS -->  " . join("\n  UPLOAD CALLS -->  ", @upload_calls));
+
+    is(scalar @ssh_calls, 8, "ipaddr2_ssh_internal called 8 times");
+    is(scalar @upload_calls, 8, "upload_logs called 8 times");
+
+    ok(any { /journalctl/ } @ssh_calls, "journalctl command called");
+    ok(any { /crm report/ } @ssh_calls, "crm report command called");
+    ok(any { /YaST2/ } @ssh_calls, "YaST2 logs collected");
+    ok(any { /supportconfig/ } @ssh_calls, "supportconfig command called");
+
+    ok(any { /journal_1.log/ } @upload_calls, "journal_1.log uploaded");
+    ok(any { /crm_report_1.log/ } @upload_calls, "crm_report_1.log uploaded");
+    ok(any { /y2_logs_1/ } @upload_calls, "y2_logs_1 uploaded");
+    ok(any { /supportconfig_1.log/ } @upload_calls, "supportconfig_1.log uploaded");
+    
+    ok(any { /journal_2.log/ } @upload_calls, "journal_2.log uploaded");
+    ok(any { /crm_report_2.log/ } @upload_calls, "crm_report_2.log uploaded");
+    ok(any { /y2_logs_2/ } @upload_calls, "y2_logs_2 uploaded");
+    ok(any { /supportconfig_2.log/ } @upload_calls, "supportconfig_2.log uploaded");
+};
+
 done_testing;

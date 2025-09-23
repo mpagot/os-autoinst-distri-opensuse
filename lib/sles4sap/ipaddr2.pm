@@ -63,6 +63,7 @@ our @EXPORT = qw(
   ipaddr2_patch_system
   ipaddr2_repos_add_server_to_hosts
   ipaddr2_cleanup
+  ipaddr2_logs_collect
 );
 
 use constant DEPLOY_PREFIX => 'ip2t';
@@ -2289,6 +2290,52 @@ sub ipaddr2_cleanup {
             ibsm_rg => $args{ibsm_rg});
     }
     ipaddr2_infra_destroy();
+}
+
+=head2 ipaddr2_logs_collect_cmds
+
+    my @cmds = ipaddr2_logs_collect_cmds();
+
+Returns a list of commands to collect logs from the ipaddr2 cluster.
+=cut
+
+sub ipaddr2_logs_collect_cmds {
+    my @log_list = (
+        {cmd => 'journalctl', file => 'journal.log'},
+        {cmd => 'crm report -f 0', file => 'crm_report.log'},
+        {cmd => 'cp -r /var/log/YaST2', file => 'y2_logs'},
+        {cmd => 'supportconfig -l', file => 'supportconfig.log'},
+    );
+    return @log_list;
+}
+
+=head2 ipaddr2_logs_collect
+
+    ipaddr2_logs_collect();
+
+Collect logs from the ipaddr2 cluster.
+
+=over
+
+=item B<bastion_ip> - Public IP address of the bastion. Calculated if not provided.
+                      Providing it as an argument is recommended
+                      to avoid having to query Azure to get it.
+
+=back
+=cut
+
+sub ipaddr2_logs_collect {
+    my (%args) = @_;
+    $args{bastion_ip} //= ipaddr2_bastion_pubip();
+
+    foreach my $id (1 .. 2) {
+        foreach my $log (ipaddr2_logs_collect_cmds()) {
+            my $log_file = "/tmp/$log->{file}_$id";
+            my $cmd = "$log->{cmd} > $log_file";
+            ipaddr2_ssh_internal(id => $id, cmd => $cmd, bastion_ip => $args{bastion_ip}, method => 'script_run');
+            upload_logs($log_file);
+        }
+    }
 }
 
 1;

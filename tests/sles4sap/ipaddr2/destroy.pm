@@ -62,7 +62,8 @@ use sles4sap::ibsm qw( ibsm_network_peering_azure_delete );
 use sles4sap::ipaddr2 qw(
   ipaddr2_infra_destroy
   ipaddr2_azure_resource_group
-  ipaddr2_cleanup);
+  ipaddr2_cleanup
+  ipaddr2_logs_collect);
 
 sub run {
     my ($self) = @_;
@@ -88,6 +89,7 @@ sub test_flags {
 
 sub post_fail_hook {
     my ($self) = shift;
+    ipaddr2_logs_collect();
     ipaddr2_cleanup(
         diagnostic => get_var('IPADDR2_DIAGNOSTIC', 0),
         cloudinit => get_var('IPADDR2_CLOUDINIT', 1),
