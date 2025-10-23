@@ -79,8 +79,6 @@ B<Test flow:>
 
 11. Retrieves public IP address and establishes SSH connection
 
-12. Sets SSH_CMD variable for use by subsequent test modules
-
 B<Notes:>
 
 All created resources are tagged with OpenQA job ID for easy identification and cleanup.
@@ -121,31 +119,32 @@ sub run {
     record_info("OS", $os_ver);
     assert_script_run('rm ~/.ssh/config');
     my $ssh_key = "openqa-cli-test-key-$job_id";
-    aws_import_key_pair($ssh_key, $provider->ssh_key . ".pub");
+    aws_ssh_key_pair_import($ssh_key, $provider->ssh_key . ".pub");
 
     my $region = get_var('PUBLIC_CLOUD_REGION');
-    my $vpc_id = aws_create_vpc($region, "10.0.0.0/28", $job_id);
-    my $sg_id = aws_create_security_group($region, "crash-aws", 'crash aws security group', $vpc_id, $job_id);
-    my $subnet_id = aws_create_subnet($region, "10.0.0.0/28", $vpc_id, $job_id);
+    my $vpc_id = aws_vpc_create($region, "10.0.0.0/28", $job_id);
+    my $sg_id = aws_security_group_create($region, "crash-aws", 'crash aws security group', $vpc_id, $job_id);
+    my $subnet_id = aws_subnet_create($region, "10.0.0.0/28", $vpc_id, $job_id);
     my $igw_id = aws_create_internet_gateway($region, $job_id);
     aws_attach_internet_gateway($vpc_id, $igw_id, $region);
 
     # SSH connection
-    my $route_table_id = aws_create_route_table($region, $vpc_id);
-    aws_associate_route_table($subnet_id, $route_table_id, $region);
-    aws_create_route($route_table_id, "0.0.0.0/0", $igw_id, $region);
-    aws_authorize_security_group_ingress($sg_id, 'tcp', 22, "0.0.0.0/0", $region);
+    my $route_table_id = aws_route_table_create($region, $vpc_id);
+    aws_route_table_associate($subnet_id, $route_table_id, $region);
+    aws_route_create($route_table_id, "0.0.0.0/0", $igw_id, $region);
+    aws_security_group_authorize_ingress($sg_id, 'tcp', 22, "0.0.0.0/0", $region);
 
     #create vm
-    my $instance_id = aws_create_vm(
+    # 679593333241 ( aws-marketplace )
+    my $ownerId = get_var('PUBLIC_CLOUD_EC2_ACCOUNT_ID', '679593333241');
+    my $instance_id = aws_vm_create(
         get_var('PUBLIC_CLOUD_NEW_INSTANCE_TYPE'), get_var('PUBLIC_CLOUD_IMAGE_ID'),
         $subnet_id, $sg_id, $ssh_key, $region, $job_id);
-    aws_wait_instance_status_ok($instance_id);
+    aws_vm_wait_status_ok($instance_id);
 
     my $ip_address = aws_get_ip_address($instance_id);
     my $ssh_cmd = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no ec2-user\@$ip_address";
     script_retry("$ssh_cmd hostnamectl", 90, delay => 15, retry => 12);
-    set_var('SSH_CMD', $ssh_cmd);
     record_info('Done', 'Test finished');
 }
 
