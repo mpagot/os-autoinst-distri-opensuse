@@ -237,6 +237,16 @@ sub sles4sap_cleanup {
     # setting SUPPORTCONFIG=0 will skip supportconfig log collection in both PASS and FAIL jobs
     # setting SUPPORTCONFIG=1 will collect supportconfig logs in both PASS and FAIL jobs
     # not setting SUPPORTCONFIG at all will only collect logs in case of failure
+
+    my $msg = join("\n",
+        "check_var('SUPPORTCONFIG', '0')=" . (check_var('SUPPORTCONFIG', '0') ? 'true' : 'false'),
+        "!check_var('SUPPORTCONFIG', '0')=" . (!check_var('SUPPORTCONFIG', '0') ? 'true' : 'false'),
+        "get_var('SUPPORTCONFIG')=" . (get_var('SUPPORTCONFIG') ? 'true' : 'false'),
+        '$self->{result} -> ' . ($self->{result} // 'undef'),
+        'RES:??');
+    #        'TOT: ' . (!check_var('SUPPORTCONFIG', '0') && (get_var('SUPPORTCONFIG') || (($self->{result} // '') eq 'fail'))) ? 'true' : 'false');
+    record_info('SUPPORT CONFIG SKIP', $msg);
+
     if (!check_var('SUPPORTCONFIG', '0') && (get_var('SUPPORTCONFIG') || (($self->{result} // '') eq 'fail'))) {
         qesap_supportconfig_logs(provider => get_required_var('PUBLIC_CLOUD_PROVIDER'));
     }
