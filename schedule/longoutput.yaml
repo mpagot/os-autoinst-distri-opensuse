@@ -1,0 +1,9 @@
+---
+name: longoutput
+description: |
+  iStress test for testapi
+vars:
+    TEST_CONTEXT: 'OpenQA::Test::RunArgs'
+schedule:
+    - boot/boot_to_desktop
+    - longouput
