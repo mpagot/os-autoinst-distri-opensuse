@@ -9,7 +9,7 @@ azure-cli==2.84.0
 azure-cli-core==2.84.0
 azure-cli-telemetry==1.1.0
 azure-common==1.1.28
-azure-core==1.38.2
+azure-core==1.38.3
 azure-cosmos==3.2.0
 azure-data-tables==12.4.0
 azure-datalake-store==1.0.1
@@ -96,7 +96,7 @@ bcrypt==5.0.0
 certifi==2026.2.25
 cffi==2.0.0
 chardet==5.2.0
-charset-normalizer==3.4.5
+charset-normalizer==3.4.6
 colorama==0.4.6
 cryptography==46.0.5
 decorator==5.2.1
@@ -126,9 +126,9 @@ pycomposefile==0.0.34
 pycparser==3.0
 PyGithub==1.59.1
 Pygments==2.19.2
-PyJWT==2.11.0
+PyJWT==2.12.1
 PyNaCl==1.6.2
-pyOpenSSL==25.3.0
+pyOpenSSL==26.0.0
 PySocks==1.7.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
