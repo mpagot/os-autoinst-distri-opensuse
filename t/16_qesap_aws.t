@@ -100,4 +100,24 @@ subtest '[qesap_aws_create_credentials]' => sub {
 };
 
 
+subtest '[qesap_aws_get_tgw_attachments]' => sub {
+    my $qesap = Test::MockModule->new('sles4sap::qesap::aws', no_auto => 1);
+
+    # Case 1: Missing mirror_tag
+    is_deeply qesap_aws_get_tgw_attachments(), [], 'Returns empty array if mirror_tag missing';
+
+    # Case 2: Mirror TG not found
+    $qesap->redefine(qesap_aws_get_mirror_tg => sub { return (); });
+    is_deeply qesap_aws_get_tgw_attachments(mirror_tag => 'ANY'), [], 'Returns empty array if TG not found';
+
+    # Case 3: Success
+    my $tgw_id = 'tgw-123';
+    $qesap->redefine(qesap_aws_get_mirror_tg => sub { return ($tgw_id); });
+    $qesap->redefine(qesap_aws_filter_query => sub { return '[{"Id": "att-1", "Name": "att-name"}]'; });
+
+    my $res = qesap_aws_get_tgw_attachments(mirror_tag => 'MIRROR');
+    is(scalar @$res, 1, 'One attachment found');
+    is($res->[0]->{Id}, 'att-1', 'Correct ID');
+};
+
 done_testing;

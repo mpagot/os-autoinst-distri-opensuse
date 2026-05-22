@@ -435,10 +435,11 @@ subtest "[stop_hana] crash wait_hana_node_up degradated" => sub {
 subtest "[wait_hana_node_up] with ssh_keepalive" => sub {
     my $mock_instance = Test::MockObject->new();
     $mock_instance->{public_ip} = '1.2.3.4';
-    my @captured_opts;
+    my (@captured_opts, @captured_timeouts);
     $mock_instance->mock('ssh_script_output', sub {
             my ($self, %args) = @_;
             push @captured_opts, $args{ssh_opts};
+            push @captured_timeouts, $args{timeout};
             return 'running' });
 
     my $sles4sap_pc_mock = Test::MockModule->new('sles4sap::publiccloud', no_auto => 1);
@@ -448,11 +449,14 @@ subtest "[wait_hana_node_up] with ssh_keepalive" => sub {
     # Case 1: ssh_keepalive enabled
     sles4sap::publiccloud::wait_hana_node_up($mock_instance, timeout => 10, ssh_keepalive => 1);
     like($captured_opts[0], qr/ServerAliveInterval=15/, "ServerAliveInterval is set in wait_hana_node_up");
+    is($captured_timeouts[0], 60, "Timeout is derived from keepalive settings (60s)");
 
     # Case 2: ssh_keepalive disabled
     @captured_opts = ();
+    @captured_timeouts = ();
     sles4sap::publiccloud::wait_hana_node_up($mock_instance, timeout => 10);
     ok($captured_opts[0] !~ /ServerAliveInterval/, "Keepalive options not injected in wait_hana_node_up by default");
+    is($captured_timeouts[0], 30, "Default timeout is used when keepalive is disabled (30s)");
 };
 
 subtest "[stop_hana] missing online_string croaks" => sub {

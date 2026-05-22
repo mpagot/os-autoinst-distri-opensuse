@@ -42,6 +42,7 @@ our @EXPORT = qw(
   aws_route_create
   aws_vm_create
   aws_vm_get_id
+  aws_vm_read_status
   aws_vm_wait_status_ok
   aws_vm_terminate
   aws_get_ip_address
@@ -785,6 +786,46 @@ sub aws_vm_get_id(%args) {
             '--region', $args{region}));
 }
 
+=head2 aws_vm_read_status
+
+    my $status = aws_vm_read_status(
+        instance_id => 'i-12345',
+        [region => 'us-west-1']
+    );
+
+Retrieve the current state of an EC2 instance.
+Returns the instance state name (e.g., 'running', 'stopped').
+
+=over
+
+=item B<instance_id> - ID of the instance to check
+
+=item B<region> - AWS region where the instance is located
+
+=back
+=cut
+
+sub aws_vm_read_status(%args) {
+    croak("Argument < instance_id > missing") unless $args{instance_id};
+    my $filter;
+    if ($args{instance_id} =~ /^i-[0-9a-f]+$/) {
+        $filter = "Name=instance-id,Values=$args{instance_id}";
+    }
+    elsif ($args{instance_id} =~ /^\d+\.\d+\.\d+\.\d+$/) {
+        $filter = "Name=ip-address,Values=$args{instance_id}";
+    }
+    else {
+        $filter = "Name=tag:Name,Values=$args{instance_id}";
+    }
+
+    return aws_filter_query(
+        cmd => 'describe-instances',
+        filter => $filter,
+        query => 'Reservations[*].Instances[*].State.Name',
+        region => $args{region}
+    );
+}
+
 =head2 aws_vm_wait_status_ok
 
     aws_vm_wait_status_ok(
@@ -802,14 +843,16 @@ Wait for an EC2 instance to reach 'running' state with a timeout of 600 seconds
 
 sub aws_vm_wait_status_ok(%args) {
     croak("Argument < instance_id > missing") unless $args{instance_id};
+    my $retry = $args{retry} // 12;
+    my $delay = $args{delay} // 15;
 
-    script_retry(join(' ',
-            'aws ec2 describe-instances',
-            '--instance-ids', $args{instance_id},
-            '--query', "'Reservations[*].Instances[*].State.Name'",
-            '--output', 'text',
-            '|', 'grep', "'running'"
-    ), 90, delay => 15, retry => 12);
+    while ($retry > 0) {
+        my $status = aws_vm_read_status(%args);
+        return if $status =~ /running/;
+        $retry--;
+        sleep $delay if $retry > 0;
+    }
+    die("Instance $args{instance_id} did not reach 'running' state within defined timeout.");
 }
 
 =head2 aws_get_ip_address

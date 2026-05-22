@@ -372,10 +372,22 @@ subtest '[aws_vm_get_id]' => sub {
     ok(($res eq 'i-123'), "Result is '$res' expected to be 'i-123'");
 };
 
+subtest '[aws_vm_read_status]' => sub {
+    my $awscli = Test::MockModule->new('sles4sap::aws_cli', no_auto => 1);
+    my @calls;
+    $awscli->redefine(script_output => sub { push @calls, $_[0]; return 'running'; });
+
+    my $res = aws_vm_read_status(instance_id => 'i-12345');
+
+    note("\n  -->  " . join("\n  -->  ", @calls));
+    ok((any { /aws ec2 describe-instances/ } @calls), 'Command describe-instances');
+    is($res, 'running', 'Returns instance state');
+};
+
 subtest '[aws_vm_wait_status_ok]' => sub {
     my $awscli = Test::MockModule->new('sles4sap::aws_cli', no_auto => 1);
     my @calls;
-    $awscli->redefine(script_retry => sub { push @calls, $_[0]; return; });
+    $awscli->redefine(script_output => sub { push @calls, $_[0]; return 'running'; });
 
     aws_vm_wait_status_ok(
         instance_id => 'i-12345'
@@ -383,7 +395,6 @@ subtest '[aws_vm_wait_status_ok]' => sub {
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok((any { /aws ec2 describe-instances/ } @calls), 'Command describe-instances');
-    ok((any { /grep 'running'/ } @calls), 'grep running is in command');
 };
 
 subtest '[aws_get_ip_address]' => sub {

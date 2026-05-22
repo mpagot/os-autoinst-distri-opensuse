@@ -28,6 +28,7 @@ use version_utils qw(check_version is_sle);
 use hacluster;
 use sles4sap::qesap::qesapdeployment;
 use sles4sap::qesap::aws;
+use sles4sap::aws_cli qw(aws_vm_read_status);
 use publiccloud::utils;
 use publiccloud::provider;
 use publiccloud::ssh_interactive qw(select_host_console);
@@ -415,17 +416,54 @@ sub wait_hana_node_up {
     }
 
     my $ssh_opts = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlPath=none -o ConnectTimeout=10';
-    $ssh_opts .= ' -o ServerAliveInterval=15 -o ServerAliveCountMax=3' if $args{ssh_keepalive};
+    my $cmd_timeout = 30;
+    if ($args{ssh_keepalive}) {
+        my $alive_interval = 15;
+        my $alive_count = 3;
+        $ssh_opts .= " -o ServerAliveInterval=$alive_interval -o ServerAliveCountMax=$alive_count";
+        # Command timeout must be larger than keepalive detection time to allow SSH to cleanly exit with 255
+        # Calculation: (interval * count) + safety_margin
+        $cmd_timeout = ($alive_interval * $alive_count) + 15;
+    }
 
     $start_time = time();
     while ((time() - $start_time) < $args{timeout}) {
         $out = $instance->ssh_script_output(
             cmd => 'sudo systemctl is-system-running',
-            # timeout must be enough for ssh handshake to not kill the test
-            timeout => 30,
+            timeout => $cmd_timeout,
             ssh_opts => $ssh_opts,
             proceed_on_failure => 1);
         return if ($out =~ m/running/);
+
+        # Triage AWS unresponsiveness
+        if (check_var('PUBLIC_CLOUD_PROVIDER', 'EC2')) {
+            my $id = $instance->{instance_id};
+            my $ip = $instance->{public_ip};
+            my $region = $instance->{region} // get_var('PUBLIC_CLOUD_REGION');
+
+            # 1. Basic State check (using existing aws_cli helper)
+            my $aws_status = aws_vm_read_status(instance_id => $ip, region => $region);
+            record_info("AWS Status - $id", "Instance state in AWS: $aws_status");
+
+            # 2. Identify formal Instance ID for further diagnostics
+            my $real_id = script_output("aws ec2 describe-instances --region $region --filters Name=ip-address,Values=$ip --query 'Reservations[*].Instances[*].InstanceId' --output text", proceed_on_failure => 1);
+            $real_id =~ s/\s+//g;
+
+            if ($real_id =~ /^i-[0-9a-f]+$/) {
+                # 3. Detailed Health Status (Instance/System check)
+                my $health = script_output("aws ec2 describe-instance-status --region $region --instance-ids $real_id --query 'InstanceStatuses[*].{Instance:InstanceStatus.Status,System:SystemStatus.Status}' --output text", proceed_on_failure => 1);
+                record_info("AWS Health - $id", "Status for $real_id:\n$health");
+
+                # 4. ENI Status (Check if network interface is correctly attached)
+                my $eni = script_output("aws ec2 describe-network-interfaces --region $region --filters Name=attachment.instance-id,Values=$real_id --query 'NetworkInterfaces[*].[NetworkInterfaceId,Status,Association.PublicIp,Attachment.Status]' --output text", proceed_on_failure => 1);
+                record_info("AWS ENI - $id", "Network Status:\n$eni");
+
+                # 5. Serial Console Output (Peek at kernel messages/panics)
+                my $console = script_output("aws ec2 get-console-output --region $region --instance-id $real_id --latest --query 'Output' --output text | tail -n 50", proceed_on_failure => 1);
+                record_info("AWS Console - $id", "Last 50 lines from $real_id:\n$console");
+            }
+        }
+
         if ($out =~ m/degraded/) {
             my $failed_service = $instance->ssh_script_output(cmd => 'sudo systemctl --failed', timeout => 600, proceed_on_failure => 1);
             if ($out =~ /degraded/ && $failed_service =~ /guestregister/) {
