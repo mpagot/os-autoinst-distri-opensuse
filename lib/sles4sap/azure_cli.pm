@@ -1453,7 +1453,7 @@ sub az_vm_diagnostic_log_get(%args) {
     my $timeout = $args{timeout} // 240;
     my @diagnostic_log_files;
     my $vm_data = az_vm_list(resource_group => $args{resource_group}, query => '[].{id:id,name:name}');
-    my $az_get_logs_cmd = 'az vm boot-diagnostics get-boot-log --ids';
+    my $az_get_logs_cmd = 'az vm --debug boot-diagnostics get-boot-log --ids';
     my $ret;
     my $err;
     my $redirect = $args{verbose} ? '|& tee' : '&>';
