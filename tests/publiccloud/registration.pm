@@ -49,6 +49,23 @@ sub run {
     $args->{my_instance}->ssh_script_retry(cmd => "sudo SUSEConnect -s", retry => 10, delay => 60);
     my $reg_status = $args->{my_instance}->ssh_script_output("sudo SUSEConnect -s");
     die "System is not correctly registered" if ($reg_status =~ /Not Registered/m);
+
+    # Probe LTSS repo access: SMT confirms LTSS registration immediately but takes time to propagate
+    # the entitlement. If zypper patch runs before propagation completes it gets HTTP 403 on LTSS
+    # packages (exit 8). Poll until repomd.xml is accessible with the zypper LTSS credentials.
+    my $ltss_cred = '/etc/zypp/credentials.d/SUSE_Linux_Enterprise_Server_LTSS_x86_64';
+    if ($args->{my_instance}->ssh_script_run(cmd => "test -f $ltss_cred") == 0) {
+        record_info('LTSS probe', 'Waiting for SMT to propagate LTSS entitlement');
+        $args->{my_instance}->ssh_script_retry(
+            cmd   => "U=\$(grep ^username= $ltss_cred | cut -d= -f2) && "
+                   . "P=\$(grep ^password= $ltss_cred | cut -d= -f2) && "
+                   . 'URL=$(sudo zypper lr --url | awk -F\'|\' \'/LTSS-Updates/ && !/Debuginfo/{gsub(/ /,"", $NF); print $NF}\') && '
+                   . 'curl -sf --user "$U:$P" "${URL}repodata/repomd.xml"',
+            retry   => 18,
+            delay   => 10,
+            timeout => 60
+        );
+    }
     # Since SLE 15 SP6 CHOST images don't have curl and we need it for testing
     if (is_sle('>15-SP5') && is_container_host()) {
         pc_pkg_call($args->{my_instance}, "in --force-resolution -y curl");
