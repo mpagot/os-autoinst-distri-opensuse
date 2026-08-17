@@ -217,6 +217,7 @@ sub load_publiccloud_cli_tools {
     } else {
         loadtest 'publiccloud/azure_cli' if (is_azure());
         loadtest 'publiccloud/aws_cli' if (is_ec2());
+        loadtest 'publiccloud/aws_efs' if (is_ec2());
     }
 }
 
