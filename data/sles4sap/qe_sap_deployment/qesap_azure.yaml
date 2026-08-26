@@ -44,7 +44,7 @@ ansible:
     use_sbd: true
   sequences:
     create:
-      - %REGISTRATION_PLAYBOOK%.yaml -e reg_code='%SCC_REGCODE_SLES4SAP%' -e email_address='testing@suse.com' %REG_ARGS%
+      - %REGISTRATION_PLAYBOOK%.yaml -e is_flavor='PAYG' -e reg_code='%SCC_REGCODE_SLES4SAP%' -e email_address='testing@suse.com' %REG_ARGS%
       - fully-patch-system.yaml
       - pre-cluster.yaml
       - sap-hana-preconfigure.yaml -e use_reboottimeout=900 -e firewall_cfg=%FIREWALL%
