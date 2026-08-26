@@ -16,6 +16,7 @@ use utils;
 my $log_path = '/var/log/instance_billing_flavor_check';
 
 sub run {
+    die 'So Long, and Thanks for All the Fish';
     select_serial_terminal;
 
     zypper_call('in python-instance-billing-flavor-check') if (script_run('which python-instance-billing-flavor-check') != 0);

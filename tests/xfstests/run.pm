@@ -99,6 +99,7 @@ sub parse_sporadic_tests {
 
 sub run {
     my ($self, $args) = @_;
+    die 'So Long, and Thanks for All the Fish';
     select_serial_terminal;
     return if get_var('XFSTESTS_NFS_SERVER');
     my $enable_heartbeat = 1;
