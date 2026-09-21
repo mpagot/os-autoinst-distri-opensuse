@@ -10,7 +10,7 @@
 use Mojo::Base 'publiccloud::basetest';
 use testapi;
 use serial_terminal 'select_serial_terminal';
-use publiccloud::zypper 'pc_transactional_call';
+use publiccloud::zypper qw(pc_transactional_call pc_zypper_output);
 use version_utils qw(is_sle_micro);
 
 
@@ -38,7 +38,7 @@ sub run {
     # start migration
     select_serial_terminal();
     $instance->ssh_script_retry("sudo zypper -n ref", retry => 3, timeout => 600, fail_message => "zypper refresh failed");
-    record_info('Repos', $instance->ssh_script_output('zypper lr -u'));
+    record_info('Repos', pc_zypper_output($instance, 'lr -u'));
 
     # pc_transactional_call() dies with the relevant transactional-update.log
     # excerpt on failure (exitcode => [0] here, since a reboot is expected

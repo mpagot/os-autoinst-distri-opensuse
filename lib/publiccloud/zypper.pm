@@ -37,6 +37,8 @@ through plain C<zypper>.
 
 =item L</pc_zypper_call>           - plain C<sudo zypper -n ...>
 
+=item L</pc_zypper_output>         - run zypper over SSH and return stdout
+
 =item L</pc_transactional_call>    - plain C<sudo transactional-update -n ...>
 
 =item L</pc_pkg_call>              - smart dispatch based on C<is_transactional()>
@@ -115,6 +117,7 @@ use constant BUSY_PROCESS_PATTERN => join('|',
 
 our @EXPORT_OK = qw(
   pc_zypper_call
+  pc_zypper_output
   pc_transactional_call
   pc_pkg_call
   pc_refresh
@@ -245,6 +248,48 @@ sub pc_zypper_call {
     my ($instance, $cmd, %opts) = _normalize_call_args(@_);
     _validate_args($cmd, \%opts);
     return _run($instance, _sudo_env("zypper -n $cmd"), %opts, _kind => 'zypper');
+}
+
+=head2 pc_zypper_output
+
+    pc_zypper_output($instance, $cmd, %opts);
+    pc_zypper_output($instance, cmd => $cmd, %opts);
+
+Runs C<sudo zypper -n $cmd> on a remote instance via SSH and returns its standard
+output (stdout) as a scalar string.
+
+Options (all optional):
+
+=over 4
+
+=item B<timeout>           => seconds, default 700
+
+=item B<proceed_on_failure> => if true, does not die on non-zero exit
+
+=item B<wait_quit>          => if true (default: 0), wait for any running
+                                zypper-related processes to finish before
+                                running the command
+
+=back
+
+=cut
+
+sub pc_zypper_output {
+    my ($instance, $cmd, %opts) = _normalize_call_args(@_);
+    _validate_args($cmd, \%opts);
+
+    my $wait_quit = delete $opts{wait_quit} // 0;
+    pc_wait_quit($instance) if $wait_quit;
+
+    my $timeout = delete $opts{timeout} // DEFAULT_TIMEOUT_ZYPPER;
+    my $proceed = delete $opts{proceed_on_failure} // 0;
+
+    return $instance->ssh_script_output(
+        cmd => "sudo zypper -n $cmd",
+        timeout => $timeout,
+        proceed_on_failure => $proceed,
+        %opts
+    );
 }
 
 =head2 pc_transactional_call
@@ -429,8 +474,9 @@ sub pc_available_packages {
     my @missing = grep { !$installed{$_} } @$pkgs_ref;
     return [] unless @missing;
 
-    my $output = $instance->ssh_script_output(
-        cmd => 'zypper -x info ' . join(' ', @missing) . ' 2>/dev/null',
+    my $output = pc_zypper_output(
+        $instance,
+        'info ' . join(' ', @missing) . ' 2>/dev/null',
         proceed_on_failure => 1,
     );
     my @available = ($output =~ /^Name\s*:\s*(\S+)/mg);

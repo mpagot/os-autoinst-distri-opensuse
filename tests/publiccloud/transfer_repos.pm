@@ -16,7 +16,7 @@ use publiccloud::ssh_interactive "select_host_console";
 use maintenance_smelt qw(is_embargo_update);
 use version_utils qw(is_sle_micro is_sle);
 use publiccloud::utils qw(additional_repos);
-use publiccloud::zypper qw(pc_zypper_call);
+use publiccloud::zypper qw(pc_zypper_call pc_zypper_output);
 
 sub run {
     my ($self, $args) = @_;
@@ -91,7 +91,7 @@ sub run {
         $instance->ssh_assert_script_run("sudo find $repodir -name *.repo -exec echo '{}' \\;");
     }
 
-    record_info("zypper repos", $instance->ssh_script_output("zypper lr -P"));
+    record_info("zypper repos", pc_zypper_output($instance, 'lr -P'));
 }
 
 sub test_flags {

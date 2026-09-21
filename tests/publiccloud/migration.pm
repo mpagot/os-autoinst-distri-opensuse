@@ -14,7 +14,7 @@ use Time::Piece;
 use version_utils 'is_sle';
 use publiccloud::ssh_interactive "select_host_console";
 use publiccloud::utils qw(is_ec2 is_gce is_azure registercloudguest);
-use publiccloud::zypper qw(pc_zypper_call pc_refresh);
+use publiccloud::zypper qw(pc_zypper_call pc_refresh pc_zypper_output);
 
 sub run {
     my ($self, $args) = @_;
@@ -126,7 +126,7 @@ sub run {
 sub print_os_version {
     my $instance = shift;
     my $os_release = $instance->ssh_script_output("cat /etc/os-release", proceed_on_failure => 1);
-    my $zypper_lr = $instance->ssh_script_output("sudo zypper -n lr", proceed_on_failure => 1);
+    my $zypper_lr = pc_zypper_output($instance, 'lr', proceed_on_failure => 1);
     record_info('VER CHCK', "# ssh sut cat /etc/os-release:\n" . $os_release . "\n\n# ssh sut sudo zypper -n lr:\n" . $zypper_lr);
 }
 

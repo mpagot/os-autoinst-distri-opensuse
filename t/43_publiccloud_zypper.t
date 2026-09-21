@@ -19,6 +19,7 @@ use testapi 'set_var';
 
 use publiccloud::zypper qw(
   pc_zypper_call
+  pc_zypper_output
   pc_transactional_call
   pc_pkg_call
   pc_refresh
@@ -197,6 +198,45 @@ subtest '[pc_zypper_call] prefixes sudo zypper -n' => sub {
     pc_zypper_call($inst, 'ref');
 
     is($captured, "sudo env ZYPP_LOCK_TIMEOUT=$T zypper -n ref", 'command wrapped with sudo env ZYPP_LOCK_TIMEOUT zypper -n');
+};
+
+subtest '[pc_zypper_output] command formatting, defaults and return value' => sub {
+    my $inst = _instance_mock(output => "Repository list output\n");
+
+    my $out = pc_zypper_output($inst, 'lr -u');
+
+    is($out, "Repository list output\n", 'returns stdout from ssh_script_output');
+    my ($call) = grep { $_->{m} eq 'output' } @{$inst->{calls}};
+    ok($call, 'ssh_script_output called');
+    is($call->{cmd}, 'sudo zypper -n lr -u', 'prefixes sudo zypper -n');
+    is($call->{timeout}, publiccloud::zypper::DEFAULT_TIMEOUT_ZYPPER(), 'uses DEFAULT_TIMEOUT_ZYPPER by default');
+    is($call->{proceed_on_failure}, 0, 'proceed_on_failure defaults to 0');
+};
+
+subtest '[pc_zypper_output] options forwarding' => sub {
+    my $inst = _instance_mock(output => "out");
+
+    my $out = pc_zypper_output($inst, cmd => 'lr -P', timeout => 120, proceed_on_failure => 1);
+
+    my ($call) = grep { $_->{m} eq 'output' } @{$inst->{calls}};
+    ok($call, 'ssh_script_output called');
+    is($call->{cmd}, 'sudo zypper -n lr -P', 'named cmd supported');
+    is($call->{timeout}, 120, 'timeout forwarded');
+    is($call->{proceed_on_failure}, 1, 'proceed_on_failure forwarded');
+};
+
+subtest '[pc_zypper_output] wait_quit triggers pc_wait_quit' => sub {
+    my $mod = Test::MockModule->new('publiccloud::zypper', no_auto => 1);
+    my $wait_quit_called = 0;
+    $mod->redefine(pc_wait_quit => sub { $wait_quit_called++ });
+    my $inst = _instance_mock(output => "ok");
+
+    pc_zypper_output($inst, 'lr', wait_quit => 1);
+    is($wait_quit_called, 1, 'pc_wait_quit invoked when wait_quit => 1');
+
+    $wait_quit_called = 0;
+    pc_zypper_output($inst, 'lr');
+    is($wait_quit_called, 0, 'pc_wait_quit not invoked by default');
 };
 
 # ---------------------------------------------------------------------------
