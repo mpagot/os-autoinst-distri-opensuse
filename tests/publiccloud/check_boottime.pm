@@ -10,8 +10,9 @@ use Mojo::Base 'publiccloud::basetest';
 use testapi;
 use Data::Dumper;
 use Mojo::Util 'trim';
-use publiccloud::utils qw(is_azure);
+use publiccloud::utils qw(is_azure is_gce);
 use publiccloud::ssh_interactive qw(select_host_console);
+use version_utils qw(package_version_cmp);
 
 sub systemd_time_to_second
 {
@@ -93,6 +94,64 @@ sub do_systemd_analyze_time {
         # List all jobs and the failed units to support debug the issue
         record_info("list-jobs", $instance->ssh_script_output(cmd => 'systemctl list-jobs --no-pager', proceed_on_failure => 1));
         record_info("failed units", $instance->ssh_script_output(cmd => 'systemctl --failed --no-pager', proceed_on_failure => 1));
+        # guestregister.service getting stuck "running" is the usual reason bootup
+        # never finishes (bsc#1264275), so dump its state and log to pinpoint where
+        # it hangs.
+        record_info("guestregister", $instance->ssh_script_output(cmd => 'systemctl status --no-pager --full guestregister.service', proceed_on_failure => 1));
+        record_info("guestregister journal", $instance->ssh_script_output(cmd => 'sudo journalctl --no-pager -u guestregister.service | tail -n 100', proceed_on_failure => 1));
+        record_info("cloudregister", $instance->ssh_script_output(cmd => 'sudo tail -n 100 /var/log/cloudregister', proceed_on_failure => 1));
+        # On GCE the hang has been traced to gcemetadata never returning while
+        # fetching the instance identity token; call it directly (bounded by a
+        # timeout so we do not block the test) to confirm whether it is stuck.
+        if (is_gce()) {
+            record_info("gcemetadata", $instance->ssh_script_output(
+                    cmd => 'sudo timeout 60 /usr/bin/gcemetadata --query instance --identity http://smt-gce.susecloud.net --identity-format full --identity-licenses TRUE --xml; echo "gcemetadata exit=$?"',
+                    proceed_on_failure => 1, timeout => 90));
+            # The hang is a known gcemetadata bug fixed in python-gcemetadata 1.1.2
+            # (SUSE-Enceladus, "Address hang in dual stack set up"): on an
+            # IPV4_IPV6 instance it connects to the DNS name
+            # metadata.google.internal (injected into /etc/hosts), which blocks
+            # for >40s, and its urlopen had no timeout. Record the installed
+            # version so a pre-fix image can be told apart from a real outage.
+            # Read the version from RPM only: do NOT run `gcemetadata --version`,
+            # because the CLI builds the GCEMetadata object (which runs the
+            # connectivity probe) before printing the version, so on a pre-1.1.2
+            # dual-stack instance it hangs, blows the script timeout, wedges the
+            # serial console and cascades into every following module dying at
+            # console setup ("script timeout: hostname"). rpm never touches
+            # gcemetadata and cannot hang.
+            record_info("gcemetadata version", $instance->ssh_script_output(
+                    cmd => 'rpm -q python-gcemetadata || rpm -qf "$(readlink -f /usr/bin/gcemetadata)"',
+                    proceed_on_failure => 1));
+            # Reproducer: even the trivial `gcemetadata --version` hangs on a
+            # pre-1.1.2 dual-stack instance. The CLI builds the GCEMetadata
+            # object first, and its __init__ calls get_available_api_versions()
+            # -> _get() -> urllib.request.urlopen() with no timeout against the
+            # metadata DNS name, which prefers the unrouted IPv6 address and
+            # blocks ~40s -- all *before* the version is ever printed. Bound it
+            # hard with a shell `timeout` (and a matching script timeout) so this
+            # reproducer can NEVER wedge the serial console: exit 124 == it hung
+            # == the bug is present; a fast exit 0 == fixed (>= 1.1.2).
+            record_info("gcemetadata --version", $instance->ssh_script_output(
+                    cmd => 'timeout 60 /usr/bin/gcemetadata --version; echo "gcemetadata --version exit=$?"',
+                    proceed_on_failure => 1, timeout => 90));
+            # Show how the metadata server name resolves under dual-stack, which
+            # is the input that makes the pre-1.1.2 connect() hang.
+            record_info("metadata hosts", $instance->ssh_script_output(
+                    cmd => 'grep -E "metadata.google.internal|susecloud" /etc/hosts; echo ---; getent ahosts metadata.google.internal',
+                    proceed_on_failure => 1));
+            # Compare reaching the metadata server by literal IPv4 / IPv6 address
+            # (what the 1.1.2 fix does) vs. by DNS name (the path that hangs). A
+            # fast IP response next to a slow/absent name response confirms the
+            # dual-stack DNS hang rather than an unreachable metadata service.
+            record_info("metadata by addr", $instance->ssh_script_output(
+                    cmd => 'for t in "169.254.169.254" "[fd20:ce::254]" "metadata.google.internal"; do '
+                      . 'echo "== $t =="; timeout 15 curl -sS -o /dev/null '
+                      . '-w "http_code=%{http_code} time_total=%{time_total}\n" '
+                      . '-H "Metadata-Flavor: Google" "http://$t/computeMetadata/v1/instance/id" '
+                      . '|| echo "exit=$? (timed out or failed)"; done',
+                    proceed_on_failure => 1, timeout => 90));
+        }
         return (0, 0);
     }
     # log time
@@ -151,11 +210,49 @@ sub check_system_boottime {
     # first deployment analysis
     my ($systemd_analyze, $systemd_blame) = do_systemd_analyze_time($instance, %args);
     unless ($systemd_analyze && $systemd_blame) {
-        # Softfailure for bsc#1264275 which causes guestregister.service to fail
-        # Do not confuse with bsc#1246104, where the title matches the failure but doesn't cover the root cause here.
-        if ($instance->ssh_script_output("sudo systemctl list-jobs") =~ "guestregister.service.*running") {
-            record_soft_failure("bsc#1264275 - systemd bootup never finished, cannot measure boot time");
+        # Boot never finished. On Public Cloud the usual reason is that
+        # guestregister.service is still running, but "stuck guestregister" is
+        # only a symptom and has more than one root cause - do not collapse them
+        # onto a single bug:
+        #
+        #  * bsc#1264275 is the server-side SCC regsharing race. Its specific
+        #    fingerprint is an HTTP 422 in /var/log/cloudregister ("Could not
+        #    announce system ... already taken" / "Unprocessable Entity"), NOT
+        #    merely a guestregister job in "running" state.
+        #  * A hung registration call also leaves guestregister running, but with
+        #    NO 422 logged. On GCE this is the dual-stack gcemetadata stall
+        #    (bsc#1277388): python-gcemetadata < 1.1.2 connects to the metadata
+        #    server over its preferred-but-unrouted IPv6 address and blocks ~40s
+        #    per call, so registration/boot never finishes. It is a different bug
+        #    and must not be mislabelled as bsc#1264275.
+        #  * Do not confuse either with bsc#1246104, whose title matches the
+        #    symptom but not the root cause here.
+        #
+        # So gate the soft-failure on the 422 signature, not on the job state.
+        my $cloudregister = $instance->ssh_script_output(cmd => 'sudo cat /var/log/cloudregister', proceed_on_failure => 1);
+        my ($scc_422) = $cloudregister =~ /^(.*(?:Could not announce system|already taken|Unprocessable Entity).*\(422\).*)$/m;
+        my $guestregister_running = $instance->ssh_script_output(cmd => 'sudo systemctl list-jobs', proceed_on_failure => 1) =~ /guestregister\.service\s+start\s+running/;
+
+        if (defined($scc_422)) {
+            record_info("SCC 422", $scc_422, result => 'fail');
+            record_soft_failure("bsc#1264275 - SCC returned 422 (regsharing race), registration never finished so boot time cannot be measured");
             return;
+        } elsif ($guestregister_running) {
+            # guestregister wedged without a 422: this is NOT bsc#1264275. Surface
+            # the cloudregister tail so the real culprit is visible.
+            record_info("cloudregister", $cloudregister, result => 'fail');
+            # On GCE the known culprit is the dual-stack gcemetadata stall fixed
+            # in python-gcemetadata 1.1.2. Detect a pre-fix package (e.g. 1.1.1)
+            # and soft-fail with the matching bug instead of dying.
+            if (is_gce()) {
+                my $gcever = trim($instance->ssh_script_output(cmd => q(rpm -q --qf '%{VERSION}' python-gcemetadata), proceed_on_failure => 1));
+                if ($gcever =~ /^\d+(?:\.\d+)*$/ && package_version_cmp($gcever, '1.1.2') < 0) {
+                    record_info("gcemetadata", "python-gcemetadata $gcever < 1.1.2 (pre dual-stack fix)", result => 'fail');
+                    record_soft_failure("bsc#1277388 - dual-stack gcemetadata stall (python-gcemetadata $gcever < 1.1.2), registration never finished so boot time cannot be measured");
+                    return;
+                }
+            }
+            die("guestregister.service stuck without an SCC 422 - boot never finished; not bsc#1264275, see cloudregister log and gcemetadata diagnostics");
         } else {
             die("failed to obtain boottime from systemd");
         }
