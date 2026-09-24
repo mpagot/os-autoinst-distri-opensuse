@@ -511,7 +511,58 @@ sub terraform_apply {
     $args{vars}->{sku} = $sku if ($sku);
     $args{vars}->{'storage-account'} = $storage_account if ($storage_account);
 
-    return $self->SUPER::terraform_apply(%args);
+    my @vms = eval { $self->SUPER::terraform_apply(%args) };
+    my $apply_err = $@;
+    return @vms unless $apply_err;
+
+    # SPIKE: collect as much az cli debug data as possible when 'tofu apply' fails.
+    # The VM can exist in Azure also if it is not in the terraform state (OSProvisioningTimedOut).
+    eval {
+        my $rg = $self->get_terraform_output('.resource_group_name.value[0]');
+        die "no resource group in terraform state\n" unless $rg;
+        my $vm = script_output("az vm list -g '$rg' --query '[0].name' -o tsv", timeout => 180, proceed_on_failure => 1);
+        $vm = $rg unless $vm;    # VM name is equal to resource group name in azure.tf
+        record_info('SPIKE DEBUG', "resource group: $rg\nvm: $vm");
+        my $n = "-g '$rg' -n '$vm'";
+        my $image_uri = $self->get_image_uri() // '';
+        (my $image_def = $image_uri) =~ s|/versions/[^/]+$||;
+
+        # Remove ANSI escape sequences, CR, NUL and SO/SI characters from the serial console output
+        my $strip = q{| sed -E 's/\x1b\[[0-9;?!]*[A-Za-z]//g; s/\x1b\][0-9]*\x07//g; s/\x1b[()][A-Z0-9]//g; s/\x1b[=>]//g' | tr -d '\000\r\016\017'};
+        my $run = sub {
+            my ($name, $cmd, %opt) = @_;
+            my $t = $opt{timeout} // 170;
+            my $filter = $opt{filter} // '';
+            my $file = "/tmp/spike_apply_failure_$name.txt";
+            script_run("(echo \"# $cmd\"; timeout $t $cmd $filter) > $file 2>&1", timeout => $t + 10);
+            upload_logs($file, failok => 1);
+        };
+        my $vm_status = "az vm get-instance-view $n --query '{provisioningState:provisioningState, statuses:instanceView.statuses, vmAgent:instanceView.vmAgent, osName:instanceView.osName, osVersion:instanceView.osVersion, image:storageProfile.imageReference, size:hardwareProfile.vmSize}' -o yaml";
+        my $boot_log = "az vm boot-diagnostics get-boot-log $n";
+
+        $run->(vm_status => $vm_status);
+        $run->(image_definition => "az sig image-definition show --ids '$image_def' -o yaml");
+        $run->(image_version => "az sig image-version show --ids '$image_uri' -o yaml");
+        $run->(boot_log => $boot_log, filter => "| jq -r . $strip");
+
+        # Connect to the serial console and push Enter a few times.
+        # If systemd-firstboot waits for input, this makes the boot continue.
+        script_run('az extension add --name serial-console --yes --only-show-errors', timeout => 180);
+        my $file = '/tmp/spike_apply_failure_serial_console.txt';
+        script_run("(sleep 20; for i in \$(seq 1 15); do printf '\\r'; sleep 10; done; sleep 30) | timeout 240 script -qfc \"az serial-console connect $n\" /dev/null 2>&1 $strip > $file", timeout => 260);
+        upload_logs($file, failok => 1);
+
+        # Give cloud-init and the Azure agent time to run, then look again
+        sleep 120;
+        $run->(vm_status_after_keys => $vm_status);
+        $run->(boot_log_after_keys => $boot_log, filter => "| jq -r . $strip");
+
+        # Works only if the Azure agent in the guest is ready after the boot continued
+        my $script = 'cat /proc/cmdline; ls -l /etc/locale.conf /etc/vconsole.conf /etc/localtime /etc/machine-id /etc/hostname; cat /etc/locale.conf /etc/vconsole.conf /etc/machine-id; echo root password hash prefix:; getent shadow root | cut -d: -f2 | cut -c1-3; ls -la /etc/credstore /etc/credstore.encrypted /run/credentials 2>&1; systemctl cat systemd-firstboot.service; systemctl list-dependencies --reverse systemd-firstboot.service; ls -la /usr/lib/systemd/system-preset /etc/systemd/system-preset 2>&1; cloud-init status --long; systemd-analyze blame | head -30; journalctl -b --no-pager -o short-monotonic -u systemd-firstboot -u cloud-init-local -u cloud-init -u waagent | tail -n 300';
+        $run->(run_command => "az vm run-command invoke $n --command-id RunShellScript --scripts '$script'", timeout => 400, filter => q{| jq -r '.value[].message'});
+    };
+    record_info('SPIKE DEBUG FAILED', $@, result => 'fail') if $@;
+    die $apply_err;
 }
 
 sub on_terraform_apply_timeout {
