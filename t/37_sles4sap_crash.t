@@ -40,12 +40,21 @@ subtest '[crash_deploy_azure]' => sub {
     ok((all { !/--resource-group/ || /--resource-group crashRussulaEmetica/ } @calls), 'All az calls use correct resource group');
 };
 
-subtest '[crash_deploy_azure] with PUBLIC_CLOUD_TAGS' => sub {
+subtest '[crash_deploy_azure] tags' => sub {
     set_var('WORKER_ID', 1);
     my @calls;
     my $crash = Test::MockModule->new('sles4sap::crash', no_auto => 1);
     $crash->redefine(get_current_job_id => sub { return 'RussulaEmetica'; });
     $crash->redefine(az_vm_wait_running => sub { push @calls, 'az_vm_wait_running'; return; });
+    $crash->redefine(qesap_get_public_cloud_tags => sub {
+            return (
+                key1 => 'value2',
+                key2 => 'value2',
+                key3 => 1,
+                key4 => 1,
+                openqa_var_job_id => 'RussulaEmetica'
+            );
+    });
     my $azure = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
     $azure->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
     $azure->redefine(script_run => sub { push @calls, $_[0]; return 0; });
@@ -53,13 +62,11 @@ subtest '[crash_deploy_azure] with PUBLIC_CLOUD_TAGS' => sub {
             return 'out.json' if grep /az.json/, $_[0];
             return '"Arlecchino"' if grep /out.json/, $_[0]; });
 
-    set_var('PUBLIC_CLOUD_TAGS', 'key1=value2,key2=value2,key3,key4,openqa_var_job_id');
     crash_deploy_azure(
         region => 'AmanitaMuscaria',
         os => 'CortinariusCinnabarinus',
         address_range => '10.0.0.0/24',
         subnet_range => '10.0.0.0/24');
-    set_var('PUBLIC_CLOUD_TAGS', undef);
 
     note("\n  -->  " . join("\n  -->  ", @calls));
     ok((any { /az vm create/ } @calls), 'There is one VM create');

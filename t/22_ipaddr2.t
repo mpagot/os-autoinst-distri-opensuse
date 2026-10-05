@@ -164,7 +164,7 @@ subtest '[ipaddr2_infra_deploy] tags' => sub {
     $ipaddr2->redefine(az_vm_wait_running => sub { return 300; });
     $ipaddr2->redefine(ipaddr2_cloudinit_create => sub { return '/tmp/Faggin'; });
     $ipaddr2->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
-    $ipaddr2->redefine(qesap_get_public_cloud_tags => sub { return 'PellegrinoTurri'; });
+    $ipaddr2->redefine(qesap_get_public_cloud_tags => sub { return (Pellegrino => 'Turri'); });
 
     my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
     $azcli->redefine(assert_script_run => sub { push @calls, ['azure_cli', $_[0]]; return; });
@@ -184,9 +184,9 @@ subtest '[ipaddr2_infra_deploy] tags' => sub {
     ok((@create_cmds),
         'Found at least one "az.*create" command');
 
-    my @missing_tags = grep { !/--tags PellegrinoTurri/ } @create_cmds;
-    ok((all { /--tags PellegrinoTurri/ } @create_cmds),
-        'All create commands contain "--tags PellegrinoTurri"')
+    my @missing_tags = grep { !/--tags Pellegrino=Turri/ } @create_cmds;
+    ok((all { /--tags Pellegrino=Turri/ } @create_cmds),
+        'All create commands contain "--tags Pellegrino=Turri"')
       or diag("The following commands are missing the tag:\n" . join("\n", @missing_tags));
 };
 
